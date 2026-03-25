@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, Context } from 'hono';
 import { cors } from 'hono/cors';
 import { LineClient } from '@line-crm/line-sdk';
 import { getLineAccounts } from '@line-crm/db';
@@ -44,13 +44,24 @@ export type Env = {
     LINE_LOGIN_CHANNEL_ID: string;
     LINE_LOGIN_CHANNEL_SECRET: string;
     WORKER_URL: string;
+    ALLOWED_ORIGINS?: string;
   };
 };
 
 const app = new Hono<Env>();
 
-// CORS — allow all origins for MVP
-app.use('*', cors({ origin: '*' }));
+// CORS — control origins via ALLOWED_ORIGINS env var (comma-separated)
+// Fallback to '*' if not set (for backward compatibility during MVP)
+const allowedOrigins = (c: Context) => {
+  const origins = c.env.ALLOWED_ORIGINS;
+  if (!origins) return '*';
+  return origins.split(',').map(o => o.trim());
+};
+
+app.use('*', (c, next) => {
+  const origins = allowedOrigins(c);
+  return cors({ origin: origins })(c, next);
+});
 
 // Auth middleware — skips /webhook and /docs automatically
 app.use('*', authMiddleware);
