@@ -34,6 +34,7 @@ import { trackedLinks } from './routes/tracked-links.js';
 import { forms } from './routes/forms.js';
 import { assets } from './routes/assets.js';
 import { richMenuMappings } from './routes/rich-menu-mappings.js';
+import { adPlatforms } from './routes/ad-platforms.js';
 
 export type Env = {
   Bindings: {
@@ -48,6 +49,7 @@ export type Env = {
     LINE_LOGIN_CHANNEL_SECRET: string;
     WORKER_URL: string;
     ALLOWED_ORIGINS?: string;
+    X_HARNESS_URL?: string;  // Optional: X Harness API URL for account linking
   };
 };
 
@@ -98,6 +100,7 @@ app.route('/', trackedLinks);
 app.route('/', forms);
 app.route('/', assets);
 app.route('/', richMenuMappings);
+app.route('/', adPlatforms);
 
 // Short link: /r/:ref → landing page with LINE open button
 app.get('/r/:ref', (c) => {
@@ -162,7 +165,7 @@ async function scheduled(
     const lineClient = new LineClient(token);
     jobs.push(
       processStepDeliveries(env.DB, lineClient, env.WORKER_URL),
-      processScheduledBroadcasts(env.DB, lineClient),
+      processScheduledBroadcasts(env.DB, lineClient, env.WORKER_URL),
       processReminderDeliveries(env.DB, lineClient),
     );
   }
