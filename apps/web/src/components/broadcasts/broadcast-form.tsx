@@ -192,13 +192,18 @@ export default function BroadcastForm({ tags, onSuccess, onCancel }: BroadcastFo
             <p className="text-xs text-gray-400 mt-1">上のURLフォームか、直接JSONを編集できます</p>
           )}
           {form.messageType === 'flex' && form.messageContent && (() => {
-            try { JSON.parse(form.messageContent); return true } catch { return false }
-          })() && (
-            <div className="mt-3">
-              <p className="text-xs font-medium text-gray-500 mb-2">プレビュー</p>
-              <FlexPreviewComponent content={form.messageContent} maxWidth={300} />
-            </div>
-          )}
+            let valid = false
+            try { JSON.parse(form.messageContent); valid = true } catch { /* */ }
+            if (valid) {
+              return (
+                <div className="mt-3">
+                  <p className="text-xs font-medium text-gray-500 mb-2">プレビュー</p>
+                  <FlexPreviewComponent content={form.messageContent} maxWidth={300} />
+                </div>
+              )
+            }
+            return <p className="text-xs text-red-500 mt-1">JSON パースエラー — 正しいFlex JSONを入力してください</p>
+          })()}
         </div>
 
         {/* Target */}
