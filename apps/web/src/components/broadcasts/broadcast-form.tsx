@@ -28,6 +28,28 @@ interface FormState {
   sendNow: boolean
 }
 
+function FlexPreviewSection({ content }: { content: string }) {
+  if (!content) return null
+
+  let parsed: unknown = null
+  try {
+    parsed = JSON.parse(content)
+  } catch {
+    return <p className="text-xs text-red-500 mt-2">JSON parse error — enter valid Flex JSON</p>
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    return <p className="text-xs text-red-500 mt-2">Invalid Flex JSON structure</p>
+  }
+
+  return (
+    <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+      <p className="text-xs font-medium text-gray-500 mb-2">Flex Preview</p>
+      <FlexPreviewComponent content={content} maxWidth={300} />
+    </div>
+  )
+}
+
 export default function BroadcastForm({ tags, onSuccess, onCancel }: BroadcastFormProps) {
   const [form, setForm] = useState<FormState>({
     title: '',
@@ -191,19 +213,7 @@ export default function BroadcastForm({ tags, onSuccess, onCancel }: BroadcastFo
           {form.messageType === 'image' && (
             <p className="text-xs text-gray-400 mt-1">上のURLフォームか、直接JSONを編集できます</p>
           )}
-          {form.messageType === 'flex' && form.messageContent && (() => {
-            let valid = false
-            try { JSON.parse(form.messageContent); valid = true } catch { /* */ }
-            if (valid) {
-              return (
-                <div className="mt-3">
-                  <p className="text-xs font-medium text-gray-500 mb-2">プレビュー</p>
-                  <FlexPreviewComponent content={form.messageContent} maxWidth={300} />
-                </div>
-              )
-            }
-            return <p className="text-xs text-red-500 mt-1">JSON パースエラー — 正しいFlex JSONを入力してください</p>
-          })()}
+          {form.messageType === 'flex' && <FlexPreviewSection content={form.messageContent} />}
         </div>
 
         {/* Target */}
