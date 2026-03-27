@@ -156,6 +156,21 @@ export class LineClient {
 
   // ─── Rich Menu Image Upload ─────────────────────────────────────────────
 
+  /** Download rich menu image binary from LINE. */
+  async downloadRichMenuImage(richMenuId: string): Promise<{ data: ArrayBuffer; contentType: string }> {
+    const url = `https://api-data.line.me/v2/bot/richmenu/${encodeURIComponent(richMenuId)}/content`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${this.channelAccessToken}` },
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`LINE API error: ${res.status} ${res.statusText} — ${text}`);
+    }
+    const data = await res.arrayBuffer();
+    const contentType = res.headers.get('content-type') || 'image/png';
+    return { data, contentType };
+  }
+
   /** Upload image to a rich menu. Accepts PNG/JPEG binary (ArrayBuffer or Uint8Array). */
   async uploadRichMenuImage(
     richMenuId: string,

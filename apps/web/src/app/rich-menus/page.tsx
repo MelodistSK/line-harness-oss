@@ -191,7 +191,7 @@ function MenuList({
             )}
           </div>
 
-          <MenuPreview menu={menu} />
+          <MenuImage richMenuId={menu.richMenuId} menu={menu} />
 
           <div className="mt-3 space-y-1 text-xs text-gray-500">
             <p>サイズ: {menu.size.width}x{menu.size.height} / エリア数: {menu.areas.length}</p>
@@ -223,7 +223,27 @@ function MenuList({
   )
 }
 
-// ─── メニュープレビュー ──────────────────────────────────────────────────────
+// ─── メニュー画像（LINE APIから取得、フォールバック付き） ─────────────────────
+
+function MenuImage({ richMenuId, menu }: { richMenuId: string; menu: RichMenu }) {
+  const [failed, setFailed] = useState(false)
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
+  const apiKey = typeof window !== 'undefined' ? localStorage.getItem('lh_api_key') || '' : ''
+  const imgUrl = `${API_URL}/api/rich-menus/${richMenuId}/image?token=${encodeURIComponent(apiKey)}`
+
+  if (failed) return <MenuPreview menu={menu} />
+
+  return (
+    <img
+      src={imgUrl}
+      alt={menu.name}
+      className="w-full max-w-[300px] rounded-lg border border-gray-200"
+      onError={() => setFailed(true)}
+    />
+  )
+}
+
+// ─── メニュープレビュー（フォールバック用） ──────────────────────────────────
 
 function MenuPreview({ menu }: { menu: RichMenu }) {
   const { width, height } = menu.size

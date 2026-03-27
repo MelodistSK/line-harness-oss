@@ -109,6 +109,33 @@ richMenus.delete('/api/friends/:friendId/rich-menu', async (c) => {
   }
 });
 
+// GET /api/rich-menus/:id/image — download rich menu image from LINE API
+// Supports auth via Bearer header OR ?token= query param (for <img src>)
+richMenus.get('/api/rich-menus/:id/image', async (c) => {
+  try {
+    // Auth: check Bearer header first, then ?token= query param
+    const authHeader = c.req.header('Authorization');
+    const queryToken = c.req.query('token');
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : queryToken;
+    if (!token || token !== c.env.API_KEY) {
+      return c.json({ success: false, error: 'Unauthorized' }, 401);
+    }
+
+    const richMenuId = c.req.param('id');
+    const lineClient = new LineClient(c.env.LINE_CHANNEL_ACCESS_TOKEN);
+    const { data, contentType } = await lineClient.downloadRichMenuImage(richMenuId);
+    return new Response(data, {
+      headers: {
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=3600',
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return c.json({ success: false, error: `Failed to get rich menu image: ${message}` }, 500);
+  }
+});
+
 // POST /api/rich-menus/:id/image — upload rich menu image (accepts base64 body or binary)
 richMenus.post('/api/rich-menus/:id/image', async (c) => {
   try {
