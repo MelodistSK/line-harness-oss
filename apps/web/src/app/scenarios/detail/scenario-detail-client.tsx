@@ -451,13 +451,30 @@ export default function ScenarioDetailClient({ scenarioId }: { scenarioId: strin
                   </div>
                 )}
                 <textarea
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
-                  rows={stepForm.messageType === 'image' ? 2 : 4}
-                  placeholder={stepForm.messageType === 'image' ? '{"originalContentUrl":"...","previewImageUrl":"..."}' : 'メッセージ内容を入力...'}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-y"
+                  rows={stepForm.messageType === 'text' ? 4 : stepForm.messageType === 'flex' ? 8 : 2}
+                  placeholder={
+                    stepForm.messageType === 'image' ? '{"originalContentUrl":"...","previewImageUrl":"..."}'
+                    : stepForm.messageType === 'flex' ? '{"type":"bubble","body":{"type":"box","layout":"vertical","contents":[{"type":"text","text":"Hello"}]}}'
+                    : 'メッセージ内容を入力...'
+                  }
                   value={stepForm.messageContent}
                   onChange={(e) => setStepForm({ ...stepForm, messageContent: e.target.value })}
                   style={{ fontFamily: stepForm.messageType !== 'text' ? 'monospace' : 'inherit' }}
                 />
+                {stepForm.messageType === 'flex' && stepForm.messageContent && (() => {
+                  try { JSON.parse(stepForm.messageContent); return true } catch { return false }
+                })() && (
+                  <div className="mt-3">
+                    <p className="text-xs font-medium text-gray-500 mb-2">プレビュー</p>
+                    <FlexPreviewComponent content={stepForm.messageContent} maxWidth={300} />
+                  </div>
+                )}
+                {stepForm.messageType === 'flex' && stepForm.messageContent && (() => {
+                  try { JSON.parse(stepForm.messageContent); return false } catch { return true }
+                })() && (
+                  <p className="text-xs text-red-500 mt-1">JSON パースエラー</p>
+                )}
               </div>
 
               {stepError && <p className="text-xs text-red-600">{stepError}</p>}

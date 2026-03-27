@@ -5,6 +5,7 @@ import { api } from '@/lib/api'
 import Header from '@/components/layout/header'
 import CcPromptButton from '@/components/cc-prompt-button'
 import ImageUploader from '@/components/image-uploader'
+import FlexPreviewComponent from '@/components/flex-preview'
 
 interface Template {
   id: string
@@ -271,13 +272,30 @@ export default function TemplatesPage() {
                 </div>
               )}
               <textarea
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
-                rows={form.messageType === 'image' ? 2 : 4}
-                placeholder={form.messageType === 'image' ? '{"originalContentUrl":"...","previewImageUrl":"..."}' : 'メッセージ内容を入力してください'}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-y"
+                rows={form.messageType === 'text' ? 4 : form.messageType === 'flex' ? 8 : 2}
+                placeholder={
+                  form.messageType === 'image' ? '{"originalContentUrl":"...","previewImageUrl":"..."}'
+                  : form.messageType === 'flex' ? '{"type":"bubble","body":{"type":"box","layout":"vertical","contents":[{"type":"text","text":"Hello"}]}}'
+                  : 'メッセージ内容を入力してください'
+                }
                 value={form.messageContent}
                 onChange={(e) => setForm({ ...form, messageContent: e.target.value })}
                 style={{ fontFamily: form.messageType !== 'text' ? 'monospace' : 'inherit' }}
               />
+              {form.messageType === 'flex' && form.messageContent && (() => {
+                try { JSON.parse(form.messageContent); return true } catch { return false }
+              })() && (
+                <div className="mt-3">
+                  <p className="text-xs font-medium text-gray-500 mb-2">プレビュー</p>
+                  <FlexPreviewComponent content={form.messageContent} maxWidth={300} />
+                </div>
+              )}
+              {form.messageType === 'flex' && form.messageContent && (() => {
+                try { JSON.parse(form.messageContent); return false } catch { return true }
+              })() && (
+                <p className="text-xs text-red-500 mt-1">JSON パースエラー — 正しいFlex JSONを入力してください</p>
+              )}
             </div>
 
             {formError && <p className="text-xs text-red-600">{formError}</p>}
