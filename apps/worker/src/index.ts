@@ -32,10 +32,13 @@ import { automations } from './routes/automations.js';
 import { richMenus } from './routes/rich-menus.js';
 import { trackedLinks } from './routes/tracked-links.js';
 import { forms } from './routes/forms.js';
+import { assets } from './routes/assets.js';
+import { richMenuMappings } from './routes/rich-menu-mappings.js';
 
 export type Env = {
   Bindings: {
     DB: D1Database;
+    ASSETS: KVNamespace;
     LINE_CHANNEL_SECRET: string;
     LINE_CHANNEL_ACCESS_TOKEN: string;
     API_KEY: string;
@@ -93,6 +96,8 @@ app.route('/', automations);
 app.route('/', richMenus);
 app.route('/', trackedLinks);
 app.route('/', forms);
+app.route('/', assets);
+app.route('/', richMenuMappings);
 
 // Short link: /r/:ref → landing page with LINE open button
 app.get('/r/:ref', (c) => {

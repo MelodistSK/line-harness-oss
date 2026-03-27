@@ -109,8 +109,6 @@ richMenus.delete('/api/friends/:friendId/rich-menu', async (c) => {
   }
 });
 
-export { richMenus };
-
 // POST /api/rich-menus/:id/image — upload rich menu image (accepts base64 body or binary)
 richMenus.post('/api/rich-menus/:id/image', async (c) => {
   try {
@@ -153,3 +151,5 @@ richMenus.post('/api/rich-menus/:id/image', async (c) => {
     return c.json({ success: false, error: `Failed to upload rich menu image: ${message}` }, 500);
   }
 });
+
+export { richMenus };

@@ -11,6 +11,7 @@ import {
   jstNow,
 } from '@line-crm/db';
 import type { Friend as DbFriend, Tag as DbTag } from '@line-crm/db';
+import { LineClient } from '@line-crm/line-sdk';
 import { fireEvent } from '../services/event-bus.js';
 import { buildMessage } from '../services/step-delivery.js';
 import type { Env } from '../index.js';
@@ -200,6 +201,23 @@ friends.post('/api/friends/:id/tags', async (c) => {
           await enrollFriendInScenario(db, friendId, scenario.id);
         }
       }
+    }
+
+    // リッチメニュー自動切替: tag → rich_menu マッピングがあれば適用
+    try {
+      const mapping = await db
+        .prepare('SELECT rich_menu_id FROM rich_menu_tag_mappings WHERE tag_id = ?')
+        .bind(body.tagId)
+        .first<{ rich_menu_id: string }>();
+      if (mapping) {
+        const friend = await getFriendById(db, friendId);
+        if (friend) {
+          const lineClient = new LineClient(c.env.LINE_CHANNEL_ACCESS_TOKEN);
+          await lineClient.linkRichMenuToUser(friend.line_user_id, mapping.rich_menu_id);
+        }
+      }
+    } catch (e) {
+      console.error('Rich menu auto-switch error:', e);
     }
 
     // イベントバス発火: tag_change
