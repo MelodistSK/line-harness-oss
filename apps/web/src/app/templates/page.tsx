@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { api } from '@/lib/api'
 import Header from '@/components/layout/header'
 import CcPromptButton from '@/components/cc-prompt-button'
+import ImageUploader from '@/components/image-uploader'
 
 interface Template {
   id: string
@@ -237,12 +238,45 @@ export default function TemplatesPage() {
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">メッセージ内容 <span className="text-red-500">*</span></label>
+              {form.messageType === 'image' && (
+                <div className="mb-2">
+                  <div className="flex gap-2 items-end">
+                    <div className="flex-1">
+                      <label className="block text-xs text-gray-500 mb-1">画像URL</label>
+                      <input
+                        type="url"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                        placeholder="https://example.com/image.png"
+                        value={(() => { try { return JSON.parse(form.messageContent).originalContentUrl ?? '' } catch { return '' } })()}
+                        onChange={(e) => {
+                          const url = e.target.value
+                          setForm({ ...form, messageContent: JSON.stringify({ originalContentUrl: url, previewImageUrl: url }) })
+                        }}
+                      />
+                    </div>
+                    <ImageUploader
+                      label="Upload"
+                      onUploaded={(url) => {
+                        setForm({ ...form, messageContent: JSON.stringify({ originalContentUrl: url, previewImageUrl: url }) })
+                      }}
+                    />
+                  </div>
+                  {(() => {
+                    try {
+                      const url = JSON.parse(form.messageContent).originalContentUrl
+                      if (url) return <img src={url} alt="preview" className="mt-2 max-w-[200px] rounded-lg border border-gray-200" />
+                    } catch { /* ignore */ }
+                    return null
+                  })()}
+                </div>
+              )}
               <textarea
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
-                rows={4}
-                placeholder="メッセージ内容を入力してください"
+                rows={form.messageType === 'image' ? 2 : 4}
+                placeholder={form.messageType === 'image' ? '{"originalContentUrl":"...","previewImageUrl":"..."}' : 'メッセージ内容を入力してください'}
                 value={form.messageContent}
                 onChange={(e) => setForm({ ...form, messageContent: e.target.value })}
+                style={{ fontFamily: form.messageType !== 'text' ? 'monospace' : 'inherit' }}
               />
             </div>
 

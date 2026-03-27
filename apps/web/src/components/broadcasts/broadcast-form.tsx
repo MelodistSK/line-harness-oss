@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import type { Tag } from '@line-crm/shared'
 import { api, type ApiBroadcast } from '@/lib/api'
+import ImageUploader from '@/components/image-uploader'
 
 interface BroadcastFormProps {
   tags: Tag[]
@@ -135,17 +136,25 @@ export default function BroadcastForm({ tags, onSuccess, onCancel }: BroadcastFo
               <div className="space-y-2 mb-2">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">元画像URL (originalContentUrl)</label>
-                  <input
-                    type="url"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                    placeholder="https://example.com/image.png"
-                    value={parsed.originalContentUrl ?? ''}
-                    onChange={(e) => {
-                      const orig = e.target.value
-                      const prev = parsed.previewImageUrl ?? orig
-                      setForm({ ...form, messageContent: JSON.stringify({ originalContentUrl: orig, previewImageUrl: prev }) })
-                    }}
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      placeholder="https://example.com/image.png"
+                      value={parsed.originalContentUrl ?? ''}
+                      onChange={(e) => {
+                        const orig = e.target.value
+                        const prev = parsed.previewImageUrl ?? orig
+                        setForm({ ...form, messageContent: JSON.stringify({ originalContentUrl: orig, previewImageUrl: prev }) })
+                      }}
+                    />
+                    <ImageUploader
+                      label="Upload"
+                      onUploaded={(url) => {
+                        setForm({ ...form, messageContent: JSON.stringify({ originalContentUrl: url, previewImageUrl: url }) })
+                      }}
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">プレビュー画像URL (previewImageUrl)</label>
