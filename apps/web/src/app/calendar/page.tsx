@@ -170,8 +170,9 @@ function SettingsTab({ setError, setSuccess }: { setError: (s: string) => void; 
 
   useEffect(() => { load() }, [load])
 
-  const handleSave = async () => {
+  const handleSave = async (): Promise<boolean> => {
     setSaving(true)
+    setError('')
     try {
       const body: Record<string, unknown> = {
         google_client_email: clientEmail || null,
@@ -187,11 +188,30 @@ function SettingsTab({ setError, setSuccess }: { setError: (s: string) => void; 
         max_advance_days: maxDays,
       }
       if (privateKey.trim()) body.google_private_key = privateKey
-      const res = await fetchApi<{ success: boolean; error?: string }>('/api/calendar/settings', { method: 'PUT', body: JSON.stringify(body) })
-      if (res.success) { setSuccess('設定を保存しました'); setPrivateKey(''); load() }
-      else setError(res.error || '保存に失敗しました')
-    } catch { setError('保存に失敗しました') }
-    finally { setSaving(false) }
+
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
+      const apiKey = typeof window !== 'undefined' ? localStorage.getItem('lh_api_key') || '' : ''
+      const res = await fetch(`${API_URL}/api/calendar/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify(body),
+      })
+      const json = await res.json().catch(() => null) as { success?: boolean; error?: string } | null
+      if (res.ok && json?.success) {
+        setSuccess('設定を保存しました')
+        setPrivateKey('')
+        load()
+        return true
+      } else {
+        setError(json?.error || `保存に失敗しました (${res.status})`)
+        return false
+      }
+    } catch (err) {
+      setError(`保存に失敗しました: ${err instanceof Error ? err.message : String(err)}`)
+      return false
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleTest = async () => {
@@ -268,7 +288,7 @@ function SettingsTab({ setError, setSuccess }: { setError: (s: string) => void; 
               className="px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
               {saving ? '保存中...' : '接続設定を保存'}
             </button>
-            <button onClick={async () => { await handleSave(); handleTest() }} disabled={testing || saving || !clientEmail || !calendarId}
+            <button onClick={async () => { const ok = await handleSave(); if (ok) handleTest() }} disabled={testing || saving || !clientEmail || !calendarId}
               className="px-4 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 disabled:opacity-50 transition-colors">
               {testing ? 'テスト中...' : '保存して接続テスト'}
             </button>
