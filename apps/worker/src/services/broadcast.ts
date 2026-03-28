@@ -10,8 +10,21 @@ import type { LineClient } from '@line-crm/line-sdk';
 import type { Message } from '@line-crm/line-sdk';
 import { calculateStaggerDelay, sleep, addMessageVariation } from './stealth.js';
 import { buildMessage } from './step-delivery.js';
+import type { Friend } from '@line-crm/db';
 
 const MULTICAST_BATCH_SIZE = 500;
+const TEMPLATE_VAR_RE = /\{\{(name|score|uid)\}\}/;
+
+function expandVariables(text: string, friend: Friend): string {
+  return text
+    .replace(/\{\{name\}\}/g, friend.display_name ?? '')
+    .replace(/\{\{score\}\}/g, String(friend.score ?? 0))
+    .replace(/\{\{uid\}\}/g, friend.line_user_id);
+}
+
+function hasTemplateVariables(content: string): boolean {
+  return TEMPLATE_VAR_RE.test(content);
+}
 
 export async function processBroadcastSend(
   db: D1Database,
@@ -56,44 +69,77 @@ export async function processBroadcastSend(
       const followingFriends = friends.filter((f) => f.is_following);
       totalCount = followingFriends.length;
 
-      // Send in batches with stealth delays to mimic human patterns
       const now = jstNow();
-      const totalBatches = Math.ceil(followingFriends.length / MULTICAST_BATCH_SIZE);
-      for (let i = 0; i < followingFriends.length; i += MULTICAST_BATCH_SIZE) {
-        const batchIndex = Math.floor(i / MULTICAST_BATCH_SIZE);
-        const batch = followingFriends.slice(i, i + MULTICAST_BATCH_SIZE);
-        const lineUserIds = batch.map((f) => f.line_user_id);
+      const useVariables = hasTemplateVariables(finalContent);
 
-        // Stealth: add staggered delay between batches
-        if (batchIndex > 0) {
-          const delay = calculateStaggerDelay(followingFriends.length, batchIndex);
-          await sleep(delay);
-        }
+      if (useVariables) {
+        // Per-friend send with variable expansion
+        for (let i = 0; i < followingFriends.length; i++) {
+          const friend = followingFriends[i];
+          const expandedContent = expandVariables(finalContent, friend);
+          const personalMessage = buildMessage(finalType, expandedContent);
 
-        // Stealth: add slight variation to text messages
-        let batchMessage = message;
-        if (message.type === 'text' && totalBatches > 1) {
-          batchMessage = { ...message, text: addMessageVariation(message.text, batchIndex) };
-        }
+          // Stealth: stagger every 500 messages
+          if (i > 0 && i % MULTICAST_BATCH_SIZE === 0) {
+            const batchIndex = Math.floor(i / MULTICAST_BATCH_SIZE);
+            const delay = calculateStaggerDelay(followingFriends.length, batchIndex);
+            await sleep(delay);
+          }
 
-        try {
-          await lineClient.multicast(lineUserIds, [batchMessage]);
-          successCount += batch.length;
+          try {
+            await lineClient.pushMessage(friend.line_user_id, [personalMessage]);
+            successCount++;
 
-          // Log only successfully sent messages
-          for (const friend of batch) {
             const logId = crypto.randomUUID();
             await db
               .prepare(
                 `INSERT INTO messages_log (id, friend_id, direction, message_type, content, broadcast_id, scenario_step_id, created_at)
                  VALUES (?, ?, 'outgoing', ?, ?, ?, NULL, ?)`,
               )
-              .bind(logId, friend.id, broadcast.message_type, broadcast.message_content, broadcastId, now)
+              .bind(logId, friend.id, broadcast.message_type, expandedContent, broadcastId, now)
               .run();
+          } catch (err) {
+            console.error(`Push to ${friend.line_user_id} failed:`, err);
           }
-        } catch (err) {
-          console.error(`Multicast batch ${i / MULTICAST_BATCH_SIZE} failed:`, err);
-          // Continue with next batch; failed batch is not logged
+        }
+      } else {
+        // No variables — use efficient multicast batching
+        const totalBatches = Math.ceil(followingFriends.length / MULTICAST_BATCH_SIZE);
+        for (let i = 0; i < followingFriends.length; i += MULTICAST_BATCH_SIZE) {
+          const batchIndex = Math.floor(i / MULTICAST_BATCH_SIZE);
+          const batch = followingFriends.slice(i, i + MULTICAST_BATCH_SIZE);
+          const lineUserIds = batch.map((f) => f.line_user_id);
+
+          // Stealth: add staggered delay between batches
+          if (batchIndex > 0) {
+            const delay = calculateStaggerDelay(followingFriends.length, batchIndex);
+            await sleep(delay);
+          }
+
+          // Stealth: add slight variation to text messages
+          let batchMessage = message;
+          if (message.type === 'text' && totalBatches > 1) {
+            batchMessage = { ...message, text: addMessageVariation(message.text, batchIndex) };
+          }
+
+          try {
+            await lineClient.multicast(lineUserIds, [batchMessage]);
+            successCount += batch.length;
+
+            // Log only successfully sent messages
+            for (const friend of batch) {
+              const logId = crypto.randomUUID();
+              await db
+                .prepare(
+                  `INSERT INTO messages_log (id, friend_id, direction, message_type, content, broadcast_id, scenario_step_id, created_at)
+                   VALUES (?, ?, 'outgoing', ?, ?, ?, NULL, ?)`,
+                )
+                .bind(logId, friend.id, broadcast.message_type, broadcast.message_content, broadcastId, now)
+                .run();
+            }
+          } catch (err) {
+            console.error(`Multicast batch ${i / MULTICAST_BATCH_SIZE} failed:`, err);
+          }
         }
       }
     }
