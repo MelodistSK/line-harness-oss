@@ -12,6 +12,8 @@ interface BroadcastFormProps {
   tags: Tag[]
   onSuccess: () => void
   onCancel: () => void
+  editBroadcast?: ApiBroadcast | null
+  readOnly?: boolean
 }
 
 interface QuickReplyItem {
@@ -277,19 +279,30 @@ const MESSAGE_TYPES = [
   { value: 'video', label: '動画' },
 ]
 
-export default function BroadcastForm({ tags, onSuccess, onCancel }: BroadcastFormProps) {
+export default function BroadcastForm({ tags, onSuccess, onCancel, editBroadcast, readOnly }: BroadcastFormProps) {
+  const isEdit = !!editBroadcast?.id
+
+  // Resolve initial messageType — forms stored as 'flex' need special handling
+  const initMsgType = editBroadcast?.messageType ?? 'text'
+  const initContent = editBroadcast?.messageContent ?? ''
+
   const [form, setForm] = useState<FormState>({
-    title: '',
-    messageType: 'text',
-    messageContent: '',
-    targetType: 'all',
-    targetTagId: '',
-    scheduledAt: '',
-    sendNow: true,
+    title: editBroadcast?.title ?? '',
+    messageType: initMsgType,
+    messageContent: initContent,
+    targetType: editBroadcast?.targetType ?? 'all',
+    targetTagId: editBroadcast?.targetTagId ?? '',
+    scheduledAt: editBroadcast?.scheduledAt ? editBroadcast.scheduledAt.slice(0, 16) : '',
+    sendNow: editBroadcast ? !editBroadcast.scheduledAt : true,
   })
-  const [carouselCards, setCarouselCards] = useState<CarouselCard[]>([
-    { title: '', text: '', imageUrl: '', buttons: [] },
-  ])
+
+  const initCarousel = (() => {
+    if (initMsgType === 'carousel') {
+      try { return JSON.parse(initContent).cards ?? [] } catch { return [] }
+    }
+    return [{ title: '', text: '', imageUrl: '', buttons: [] }]
+  })()
+  const [carouselCards, setCarouselCards] = useState<CarouselCard[]>(initCarousel)
   const [quickReplyEnabled, setQuickReplyEnabled] = useState(false)
   const [quickReplyItems, setQuickReplyItems] = useState<QuickReplyItem[]>([])
 
@@ -372,22 +385,24 @@ export default function BroadcastForm({ tags, onSuccess, onCancel }: BroadcastFo
     setSaving(true)
     setError('')
     try {
-      const res = await api.broadcasts.create({
+      const payload = {
         title: form.title,
         messageType: finalType as ApiBroadcast['messageType'],
         messageContent: finalContent,
         targetType: form.targetType,
         targetTagId: form.targetType === 'tag' ? form.targetTagId || null : null,
-        status: 'draft',
         scheduledAt: form.sendNow || !form.scheduledAt ? null : form.scheduledAt + ':00.000+09:00',
-      })
+      }
+      const res = isEdit
+        ? await api.broadcasts.update(editBroadcast!.id, payload)
+        : await api.broadcasts.create({ ...payload, status: 'draft' })
       if (res.success) {
         onSuccess()
       } else {
         setError(res.error)
       }
     } catch {
-      setError('作成に失敗しました')
+      setError(isEdit ? '更新に失敗しました' : '作成に失敗しました')
     } finally {
       setSaving(false)
     }
@@ -424,7 +439,9 @@ export default function BroadcastForm({ tags, onSuccess, onCancel }: BroadcastFo
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-      <h2 className="text-sm font-semibold text-gray-800 mb-5">新規配信を作成</h2>
+      <h2 className="text-sm font-semibold text-gray-800 mb-5">
+        {readOnly ? '配信詳細（閲覧のみ）' : isEdit ? '配信を編集' : '新規配信を作成'}
+      </h2>
 
       <div className="space-y-4 max-w-xl">
         {/* Title */}
@@ -658,26 +675,30 @@ export default function BroadcastForm({ tags, onSuccess, onCancel }: BroadcastFo
 
         {/* Actions */}
         <div className="flex flex-wrap gap-2 pt-1">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-4 py-2 min-h-[44px] text-sm font-medium text-white rounded-lg disabled:opacity-50 transition-opacity"
-            style={{ backgroundColor: '#06C755' }}
-          >
-            {saving ? '作成中...' : '作成'}
-          </button>
-          <button
-            onClick={() => setShowTestSend(true)}
-            className="px-4 py-2 min-h-[44px] text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
-          >
-            テスト送信
-          </button>
+          {!readOnly && (
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="px-4 py-2 min-h-[44px] text-sm font-medium text-white rounded-lg disabled:opacity-50 transition-opacity"
+              style={{ backgroundColor: '#06C755' }}
+            >
+              {saving ? '保存中...' : isEdit ? '更新' : '作成'}
+            </button>
+          )}
+          {!readOnly && (
+            <button
+              onClick={() => setShowTestSend(true)}
+              className="px-4 py-2 min-h-[44px] text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+            >
+              テスト送信
+            </button>
+          )}
           <button
             onClick={onCancel}
             disabled={saving}
             className="px-4 py-2 min-h-[44px] text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
           >
-            キャンセル
+            {readOnly ? '閉じる' : 'キャンセル'}
           </button>
         </div>
       </div>

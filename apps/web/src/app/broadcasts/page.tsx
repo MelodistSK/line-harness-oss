@@ -37,6 +37,10 @@ const statusConfig: Record<
   sent: { label: '送信完了', className: 'bg-green-100 text-green-700' },
 }
 
+const messageTypeLabels: Record<string, string> = {
+  text: 'テキスト', image: '画像', flex: 'Flex', carousel: 'カルーセル', video: '動画',
+}
+
 function formatDatetime(iso: string | null): string {
   if (!iso) return '-'
   return new Date(iso).toLocaleString('ja-JP', {
@@ -48,13 +52,15 @@ function formatDatetime(iso: string | null): string {
   })
 }
 
+type FormMode = { type: 'create' } | { type: 'edit'; broadcast: ApiBroadcast } | { type: 'view'; broadcast: ApiBroadcast } | { type: 'duplicate'; broadcast: ApiBroadcast }
+
 export default function BroadcastsPage() {
   const { selectedAccountId } = useAccount()
   const [broadcasts, setBroadcasts] = useState<ApiBroadcast[]>([])
   const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [showCreate, setShowCreate] = useState(false)
+  const [formMode, setFormMode] = useState<FormMode | null>(null)
   const [sendingId, setSendingId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -100,9 +106,45 @@ export default function BroadcastsPage() {
     }
   }
 
+  const handleRowClick = (broadcast: ApiBroadcast) => {
+    const editable = broadcast.status === 'draft' || broadcast.status === 'scheduled'
+    setFormMode(editable ? { type: 'edit', broadcast } : { type: 'view', broadcast })
+  }
+
+  const handleDuplicate = (broadcast: ApiBroadcast) => {
+    setFormMode({ type: 'duplicate', broadcast })
+  }
+
   const getTagName = (tagId: string | null) => {
     if (!tagId) return null
     return tags.find((t) => t.id === tagId)?.name ?? null
+  }
+
+  // Build form props based on mode
+  const getFormBroadcast = (): { broadcast?: ApiBroadcast; readOnly: boolean } => {
+    if (!formMode) return { readOnly: false }
+    switch (formMode.type) {
+      case 'create':
+        return { readOnly: false }
+      case 'edit':
+        return { broadcast: formMode.broadcast, readOnly: false }
+      case 'view':
+        return { broadcast: formMode.broadcast, readOnly: true }
+      case 'duplicate': {
+        // Pass data for pre-fill but with empty id so form creates new
+        const dup: ApiBroadcast = {
+          ...formMode.broadcast,
+          id: '',
+          title: `${formMode.broadcast.title} (コピー)`,
+          status: 'draft',
+          scheduledAt: null,
+          sentAt: null,
+          totalCount: 0,
+          successCount: 0,
+        }
+        return { broadcast: dup, readOnly: false }
+      }
+    }
   }
 
   return (
@@ -111,7 +153,7 @@ export default function BroadcastsPage() {
         title="一斉配信"
         action={
           <button
-            onClick={() => setShowCreate(true)}
+            onClick={() => setFormMode({ type: 'create' })}
             className="px-4 py-2 text-sm font-medium text-white rounded-lg transition-opacity hover:opacity-90"
             style={{ backgroundColor: '#06C755' }}
           >
@@ -127,14 +169,20 @@ export default function BroadcastsPage() {
         </div>
       )}
 
-      {/* Create form */}
-      {showCreate && (
-        <BroadcastForm
-          tags={tags}
-          onSuccess={() => { setShowCreate(false); load() }}
-          onCancel={() => setShowCreate(false)}
-        />
-      )}
+      {/* Form (create / edit / view / duplicate) */}
+      {formMode && (() => {
+        const { broadcast, readOnly } = getFormBroadcast()
+        return (
+          <BroadcastForm
+            key={formMode.type + '-' + (broadcast?.id || 'new')}
+            tags={tags}
+            onSuccess={() => { setFormMode(null); load() }}
+            onCancel={() => setFormMode(null)}
+            editBroadcast={broadcast}
+            readOnly={readOnly}
+          />
+        )
+      })()}
 
       {/* Loading */}
       {loading ? (
@@ -150,7 +198,7 @@ export default function BroadcastsPage() {
             </div>
           ))}
         </div>
-      ) : broadcasts.length === 0 && !showCreate ? (
+      ) : broadcasts.length === 0 && !formMode ? (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
           <p className="text-gray-500">配信がありません。「新規配信」から作成してください。</p>
         </div>
@@ -188,13 +236,17 @@ export default function BroadcastsPage() {
                 const isSending = sendingId === broadcast.id
 
                 return (
-                  <tr key={broadcast.id} className="hover:bg-gray-50 transition-colors">
+                  <tr
+                    key={broadcast.id}
+                    className="hover:bg-gray-50 transition-colors cursor-pointer"
+                    onClick={() => handleRowClick(broadcast)}
+                  >
                     {/* Title */}
                     <td className="px-4 py-3">
                       <div>
                         <p className="text-sm font-medium text-gray-900">{broadcast.title}</p>
                         <p className="text-xs text-gray-400 mt-0.5">
-                          {broadcast.messageType === 'text' ? 'テキスト' : broadcast.messageType === 'image' ? '画像' : 'Flex'}
+                          {messageTypeLabels[broadcast.messageType] || broadcast.messageType}
                         </p>
                       </div>
                     </td>
@@ -239,8 +291,15 @@ export default function BroadcastsPage() {
                     </td>
 
                     {/* Actions */}
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleDuplicate(broadcast)}
+                          className="px-3 py-1 min-h-[44px] text-xs font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors border border-gray-200"
+                          title="この配信を複製"
+                        >
+                          複製
+                        </button>
                         {broadcast.status === 'draft' && (
                           <button
                             onClick={() => handleSend(broadcast.id)}
