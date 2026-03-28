@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { api, fetchApi } from '@/lib/api'
 import { useAccount } from '@/contexts/account-context'
 import Header from '@/components/layout/header'
@@ -406,6 +406,11 @@ export default function ChatsPage() {
   const [sending, setSending] = useState(false)
   const [notes, setNotes] = useState('')
   const [savingNotes, setSavingNotes] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const scrollToBottom = useCallback(() => {
+    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
+  }, [])
 
   const loadChats = useCallback(async () => {
     setLoading(true); setError('')
@@ -431,6 +436,7 @@ export default function ChatsPage() {
 
   useEffect(() => { loadChats() }, [loadChats])
   useEffect(() => { if (selectedChatId) loadChatDetail(selectedChatId); else setChatDetail(null) }, [selectedChatId, loadChatDetail])
+  useEffect(() => { if (chatDetail?.messages?.length) scrollToBottom() }, [chatDetail?.messages?.length, scrollToBottom])
 
   const handleSendMessage = async (msgType: string, content: string) => {
     if (!selectedChatId) return
@@ -548,6 +554,7 @@ export default function ChatsPage() {
                     </div>
                   )
                 })}
+                <div ref={messagesEndRef} />
               </div>
 
               {/* Notes */}
