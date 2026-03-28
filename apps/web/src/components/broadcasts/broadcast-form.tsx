@@ -535,6 +535,7 @@ export default function BroadcastForm({ tags, onSuccess, onCancel }: BroadcastFo
                   value={parsed.previewImageUrl ?? ''}
                   onChange={url => setForm({ ...form, messageContent: JSON.stringify({ originalContentUrl: parsed.originalContentUrl ?? '', previewImageUrl: url }) })}
                 />
+                <p className="text-xs text-gray-400 mt-1">空欄の場合は動画URLが使用されます</p>
               </div>
             )
           })()}

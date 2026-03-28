@@ -472,7 +472,7 @@ export function buildMessage(messageType: string, messageContent: string): Messa
       return {
         type: 'video',
         originalContentUrl: parsed.originalContentUrl,
-        previewImageUrl: parsed.previewImageUrl,
+        previewImageUrl: parsed.previewImageUrl || parsed.originalContentUrl,
       };
     } catch {
       return { type: 'text', text: messageContent };
