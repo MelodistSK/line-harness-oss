@@ -19,7 +19,8 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
     path.match(/^\/api\/webhooks\/incoming\/[^/]+\/receive$/) ||
     path.match(/^\/api\/forms\/[^/]+\/submit$/) ||
     path.match(/^\/api\/forms\/[^/]+$/) || // GET form definition (public for LIFF)
-    path.match(/^\/api\/rich-menus\/[^/]+\/image$/) // handles own auth via ?token=
+    path.match(/^\/api\/rich-menus\/[^/]+\/image$/) || // handles own auth via ?token=
+    path.match(/^\/api\/forms\/[^/]+\/submissions\/csv$/) // CSV export (token in query)
   ) {
     return next();
   }

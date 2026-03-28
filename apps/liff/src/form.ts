@@ -26,7 +26,7 @@ const UUID_STORAGE_KEY = 'lh_uuid';
 interface FormField {
   name: string;
   label: string;
-  type: 'text' | 'email' | 'tel' | 'number' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'date';
+  type: 'text' | 'email' | 'tel' | 'number' | 'textarea' | 'select' | 'radio' | 'checkbox' | 'date' | 'file';
   required?: boolean;
   options?: string[];
   placeholder?: string;
@@ -134,6 +134,16 @@ function renderField(field: FormField): string {
       inputHtml = `<div class="checkbox-group">${boxes}</div>`;
       break;
     }
+
+    case 'file':
+      inputHtml = `<input
+        type="file"
+        name="${escapeHtml(field.name)}"
+        id="field-${escapeHtml(field.name)}"
+        class="form-input form-file-input"
+        accept="image/*,.pdf"
+        ${required} />`;
+      break;
 
     default:
       inputHtml = `<input
@@ -301,7 +311,7 @@ function renderLoading(): void {
 
 // ========== Form Submission ==========
 
-function collectFormData(): Record<string, unknown> {
+async function collectFormData(): Promise<Record<string, unknown>> {
   const { formDef } = state;
   if (!formDef) return {};
 
@@ -320,6 +330,28 @@ function collectFormData(): Record<string, unknown> {
         `input[name="${field.name}"]:checked`,
       );
       result[field.name] = checked?.value ?? '';
+    } else if (field.type === 'file') {
+      const el = document.querySelector<HTMLInputElement>(`[name="${field.name}"]`);
+      const file = el?.files?.[0];
+      if (file) {
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+          const uploadRes = await fetch(`${API_URL}/api/assets/upload`, {
+            method: 'POST',
+            body: formData,
+          });
+          if (uploadRes.ok) {
+            const json = await uploadRes.json() as { success: boolean; data: { url: string } };
+            if (json.success) result[field.name] = json.data.url;
+          }
+        } catch (e) {
+          console.error('File upload failed:', e);
+          result[field.name] = '';
+        }
+      } else {
+        result[field.name] = '';
+      }
     } else {
       const el = document.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
         `[name="${field.name}"]`,
@@ -348,6 +380,9 @@ function validateForm(): string | null {
         `input[name="${field.name}"]:checked`,
       );
       if (!checked) return `${field.label} は必須項目です`;
+    } else if (field.type === 'file') {
+      const el = document.querySelector<HTMLInputElement>(`[name="${field.name}"]`);
+      if (!el?.files?.length) return `${field.label} は必須項目です`;
     } else {
       const el = document.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
         `[name="${field.name}"]`,
@@ -383,7 +418,7 @@ async function submitForm(): Promise<void> {
   }
 
   try {
-    const data = collectFormData();
+    const data = await collectFormData();
     console.log('Form data collected:', JSON.stringify(data));
     const body: Record<string, unknown> = { data };
     if (state.profile?.userId) body.lineUserId = state.profile.userId;

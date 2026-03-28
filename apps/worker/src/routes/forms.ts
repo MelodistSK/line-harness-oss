@@ -16,7 +16,7 @@ import type { Env } from '../index.js';
 
 const forms = new Hono<Env>();
 
-function serializeForm(row: DbForm) {
+function serializeForm(row: DbForm & { kintone_enabled?: number; kintone_subdomain?: string; kintone_app_id?: string; kintone_api_token?: string; kintone_field_mapping?: string }) {
   return {
     id: row.id,
     name: row.name,
@@ -27,6 +27,11 @@ function serializeForm(row: DbForm) {
     saveToMetadata: Boolean(row.save_to_metadata),
     isActive: Boolean(row.is_active),
     submitCount: row.submit_count,
+    kintoneEnabled: Boolean(row.kintone_enabled),
+    kintoneSubdomain: row.kintone_subdomain ?? null,
+    kintoneAppId: row.kintone_app_id ?? null,
+    kintoneApiToken: row.kintone_api_token ?? null,
+    kintoneFieldMapping: row.kintone_field_mapping ? JSON.parse(row.kintone_field_mapping) : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -94,6 +99,21 @@ forms.post('/api/forms', async (c) => {
       saveToMetadata: body.saveToMetadata,
     });
 
+    // Save kintone fields if provided
+    const kb = body as Record<string, unknown>;
+    if (kb.kintoneEnabled !== undefined) {
+      await c.env.DB.prepare(
+        `UPDATE forms SET kintone_enabled = ?, kintone_subdomain = ?, kintone_app_id = ?, kintone_api_token = ?, kintone_field_mapping = ? WHERE id = ?`
+      ).bind(
+        kb.kintoneEnabled ? 1 : 0,
+        (kb.kintoneSubdomain as string) || null,
+        (kb.kintoneAppId as string) || null,
+        (kb.kintoneApiToken as string) || null,
+        kb.kintoneFieldMapping ? JSON.stringify(kb.kintoneFieldMapping) : null,
+        form.id,
+      ).run();
+    }
+
     return c.json({ success: true, data: serializeForm(form) }, 201);
   } catch (err) {
     console.error('POST /api/forms error:', err);
@@ -124,6 +144,21 @@ forms.put('/api/forms/:id', async (c) => {
       saveToMetadata: body.saveToMetadata,
       isActive: body.isActive,
     });
+
+    // Update kintone fields if provided
+    const kb = body as Record<string, unknown>;
+    if (kb.kintoneEnabled !== undefined) {
+      await c.env.DB.prepare(
+        `UPDATE forms SET kintone_enabled = ?, kintone_subdomain = ?, kintone_app_id = ?, kintone_api_token = ?, kintone_field_mapping = ? WHERE id = ?`
+      ).bind(
+        kb.kintoneEnabled ? 1 : 0,
+        (kb.kintoneSubdomain as string) || null,
+        (kb.kintoneAppId as string) || null,
+        (kb.kintoneApiToken as string) || null,
+        kb.kintoneFieldMapping ? JSON.stringify(kb.kintoneFieldMapping) : null,
+        id,
+      ).run();
+    }
 
     if (!updated) {
       return c.json({ success: false, error: 'Form not found' }, 404);
@@ -333,10 +368,126 @@ forms.post('/api/forms/:id/submit', async (c) => {
       }
     }
 
+    // kintone integration (best-effort)
+    try {
+      const fullForm = await c.env.DB.prepare(
+        'SELECT kintone_enabled, kintone_subdomain, kintone_app_id, kintone_api_token, kintone_field_mapping FROM forms WHERE id = ?'
+      ).bind(formId).first<{ kintone_enabled: number; kintone_subdomain: string; kintone_app_id: string; kintone_api_token: string; kintone_field_mapping: string }>();
+
+      if (fullForm?.kintone_enabled && fullForm.kintone_subdomain && fullForm.kintone_app_id && fullForm.kintone_api_token) {
+        const mapping = JSON.parse(fullForm.kintone_field_mapping || '{}') as Record<string, string>;
+        const record: Record<string, { value: unknown }> = {};
+        for (const [formField, kintoneField] of Object.entries(mapping)) {
+          if (kintoneField && submissionData[formField] !== undefined) {
+            const val = submissionData[formField];
+            record[kintoneField] = { value: Array.isArray(val) ? val.join('\n') : String(val ?? '') };
+          }
+        }
+
+        const kintoneUrl = `https://${fullForm.kintone_subdomain}.cybozu.com/k/v1/record.json`;
+        const kRes = await fetch(kintoneUrl, {
+          method: 'POST',
+          headers: {
+            'X-Cybozu-API-Token': fullForm.kintone_api_token,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ app: fullForm.kintone_app_id, record }),
+        });
+        if (!kRes.ok) {
+          const errText = await kRes.text().catch(() => '');
+          console.error('kintone API error:', kRes.status, errText);
+        }
+      }
+    } catch (kErr) {
+      console.error('kintone integration error:', kErr);
+    }
+
     return c.json({ success: true, data: serializeSubmission(submission) }, 201);
   } catch (err) {
     console.error('POST /api/forms/:id/submit error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+// POST /api/forms/:id/kintone-test — test kintone connection and get fields
+forms.post('/api/forms/:id/kintone-test', async (c) => {
+  try {
+    const body = await c.req.json<{ subdomain: string; appId: string; apiToken: string }>();
+    if (!body.subdomain || !body.appId || !body.apiToken) {
+      return c.json({ success: false, error: 'subdomain, appId, apiToken are required' }, 400);
+    }
+
+    const url = `https://${body.subdomain}.cybozu.com/k/v1/app/form/fields.json?app=${body.appId}`;
+    const res = await fetch(url, {
+      headers: { 'X-Cybozu-API-Token': body.apiToken },
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      return c.json({ success: false, error: `kintone API error: ${res.status} ${errText}` }, 400);
+    }
+
+    const data = await res.json() as { properties: Record<string, { code: string; label: string; type: string }> };
+    const fields = Object.values(data.properties).map((f) => ({
+      code: f.code,
+      label: f.label,
+      type: f.type,
+    }));
+
+    return c.json({ success: true, data: fields });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return c.json({ success: false, error: message }, 500);
+  }
+});
+
+// GET /api/forms/:id/submissions/csv — export submissions as CSV
+forms.get('/api/forms/:id/submissions/csv', async (c) => {
+  try {
+    // Auth: Bearer header or ?token= query param
+    const authHeader = c.req.header('Authorization');
+    const queryToken = c.req.query('token');
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : queryToken;
+    if (!token || token !== c.env.API_KEY) {
+      return c.json({ success: false, error: 'Unauthorized' }, 401);
+    }
+
+    const id = c.req.param('id');
+    const form = await getFormById(c.env.DB, id);
+    if (!form) return c.json({ success: false, error: 'Form not found' }, 404);
+
+    const submissions = await getFormSubmissions(c.env.DB, id);
+    const fields = JSON.parse(form.fields || '[]') as Array<{ name: string; label: string }>;
+
+    // Build CSV
+    const headers = ['name', 'date', ...fields.map((f) => f.label)];
+    const rows = submissions.map((s) => {
+      const data = JSON.parse(s.data || '{}') as Record<string, unknown>;
+      return [
+        (s as unknown as { friend_name?: string }).friend_name || '',
+        s.created_at,
+        ...fields.map((f) => {
+          const val = data[f.name];
+          return Array.isArray(val) ? val.join('; ') : String(val ?? '');
+        }),
+      ];
+    });
+
+    const csvLines = [
+      headers.map((h) => `"${h.replace(/"/g, '""')}"`).join(','),
+      ...rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')),
+    ];
+    const csv = '\uFEFF' + csvLines.join('\n'); // BOM for Excel
+
+    return new Response(csv, {
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${form.name}_submissions.csv"`,
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return c.json({ success: false, error: message }, 500);
   }
 });
 

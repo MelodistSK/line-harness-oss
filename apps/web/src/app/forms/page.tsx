@@ -4,275 +4,426 @@ import { useState, useEffect, useCallback } from 'react'
 import { fetchApi, api } from '@/lib/api'
 import Header from '@/components/layout/header'
 
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+interface FormField {
+  name: string
+  type: string
+  label: string
+  required?: boolean
+  placeholder?: string
+  options?: string[]
+}
+
 interface Form {
   id: string
   name: string
   description: string | null
-  fields: string
-  settings: string
-  isActive: number
+  fields: FormField[]
+  onSubmitTagId: string | null
+  onSubmitScenarioId: string | null
+  isActive: boolean
+  submitCount: number
+  kintoneEnabled: boolean
+  kintoneSubdomain: string | null
+  kintoneAppId: string | null
+  kintoneApiToken: string | null
+  kintoneFieldMapping: Record<string, string> | null
   createdAt: string
   updatedAt: string
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString('ja-JP', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit',
-  })
-}
+const FIELD_TYPES = [
+  { type: 'text', label: 'テキスト（1行）', emoji: 'Aa' },
+  { type: 'textarea', label: 'テキストエリア', emoji: '📝' },
+  { type: 'radio', label: 'ラジオボタン', emoji: '⭕' },
+  { type: 'select', label: 'プルダウン', emoji: '▼' },
+  { type: 'checkbox', label: 'チェックボックス', emoji: '☑️' },
+  { type: 'date', label: '日付', emoji: '📅' },
+  { type: 'email', label: 'メール', emoji: '✉️' },
+  { type: 'tel', label: '電話番号', emoji: '📞' },
+  { type: 'file', label: 'ファイル', emoji: '📎' },
+]
+
+type TabId = 'list' | 'builder'
+
+// ─── Main Page ──────────────────────────────────────────────────────────────
 
 export default function FormsPage() {
   const [forms, setForms] = useState<Form[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [showCreate, setShowCreate] = useState(false)
-  const [editId, setEditId] = useState<string | null>(null)
-  const [form, setForm] = useState({ name: '', description: '', fields: '[]', tagId: '', scenarioId: '' })
-  const [saving, setSaving] = useState(false)
-  const [formError, setFormError] = useState('')
+  const [success, setSuccess] = useState('')
+  const [tab, setTab] = useState<TabId>('list')
+  const [editingForm, setEditingForm] = useState<Form | null>(null)
   const [tags, setTags] = useState<{ id: string; name: string }[]>([])
   const [scenarios, setScenarios] = useState<{ id: string; name: string }[]>([])
 
   const load = useCallback(async () => {
     setLoading(true)
-    setError('')
     try {
-      const res = await fetchApi<{ success: boolean; data: Form[]; error?: string }>('/api/forms')
-      if (res.success) {
-        setForms(res.data)
-      } else {
-        setError(res.error || 'フォームの読み込みに失敗しました')
-      }
-    } catch {
-      setError('フォームの読み込みに失敗しました')
-    } finally {
-      setLoading(false)
-    }
+      const [fRes, tRes, sRes] = await Promise.all([
+        fetchApi<{ success: boolean; data: Form[] }>('/api/forms'),
+        api.tags.list(),
+        api.scenarios.list(),
+      ])
+      if (fRes.success) setForms(fRes.data)
+      if (tRes.success) setTags(tRes.data)
+      if (sRes.success) setScenarios(sRes.data)
+    } catch { setError('読み込みに失敗しました') }
+    finally { setLoading(false) }
   }, [])
 
   useEffect(() => { load() }, [load])
 
-  useEffect(() => {
-    if (showCreate || editId) {
-      api.tags.list().then(r => { if (r.success) setTags(r.data) }).catch(() => {})
-      api.scenarios.list().then(r => { if (r.success) setScenarios(r.data) }).catch(() => {})
-    }
-  }, [showCreate, editId])
-
-  const openEdit = async (id: string) => {
-    try {
-      const res = await fetchApi<{ success: boolean; data: Form }>(`/api/forms/${id}`)
-      if (res.success) {
-        const f = res.data
-        const settings = JSON.parse(f.settings || '{}')
-        setForm({
-          name: f.name,
-          description: f.description || '',
-          fields: f.fields,
-          tagId: settings.tagId || '',
-          scenarioId: settings.scenarioId || '',
-        })
-        setEditId(id)
-        setShowCreate(false)
-      }
-    } catch {
-      setError('フォーム情報の取得に失敗しました')
-    }
-  }
-
-  const handleSave = async () => {
-    if (!form.name.trim()) { setFormError('フォーム名を入力してください'); return }
-    setSaving(true)
-    setFormError('')
-
-    let fieldsArr: unknown[]
-    try {
-      fieldsArr = JSON.parse(form.fields)
-      if (!Array.isArray(fieldsArr)) throw new Error()
-    } catch {
-      setFormError('フィールド定義はJSON配列で入力してください')
-      setSaving(false)
-      return
-    }
-
-    const settings = JSON.stringify({
-      ...(form.tagId ? { tagId: form.tagId } : {}),
-      ...(form.scenarioId ? { scenarioId: form.scenarioId } : {}),
-    })
-
-    try {
-      const url = editId ? `/api/forms/${editId}` : '/api/forms'
-      const method = editId ? 'PUT' : 'POST'
-      const res = await fetchApi<{ success: boolean; error?: string }>(url, {
-        method,
-        body: JSON.stringify({
-          name: form.name,
-          description: form.description || null,
-          fields: form.fields,
-          settings,
-        }),
-      })
-      if (res.success) {
-        setShowCreate(false)
-        setEditId(null)
-        setForm({ name: '', description: '', fields: '[]', tagId: '', scenarioId: '' })
-        load()
-      } else {
-        setFormError(res.error || '保存に失敗しました')
-      }
-    } catch {
-      setFormError('保存に失敗しました')
-    } finally {
-      setSaving(false)
-    }
-  }
-
   const handleDelete = async (id: string) => {
-    if (!confirm('このフォームを削除してもよいですか？')) return
+    if (!confirm('このフォームを削除しますか？')) return
     try {
-      await fetchApi<{ success: boolean }>(`/api/forms/${id}`, { method: 'DELETE' })
+      await fetchApi(`/api/forms/${id}`, { method: 'DELETE' })
+      setSuccess('フォームを削除しました')
       load()
-    } catch {
-      setError('削除に失敗しました')
-    }
+    } catch { setError('削除に失敗しました') }
   }
 
-  const isEditing = showCreate || editId
+  const openEdit = (form: Form) => {
+    setEditingForm(form)
+    setTab('builder')
+  }
+
+  const openCreate = () => {
+    setEditingForm(null)
+    setTab('builder')
+  }
 
   return (
     <div>
-      <Header
-        title="フォーム管理"
-        action={
-          <button
-            onClick={() => { setShowCreate(true); setEditId(null); setForm({ name: '', description: '', fields: '[]', tagId: '', scenarioId: '' }) }}
-            className="px-4 py-2 text-sm font-medium text-white rounded-lg transition-opacity hover:opacity-90"
-            style={{ backgroundColor: '#06C755' }}
-          >
-            + 新規フォーム
+      <Header title="フォーム管理" description="GUIビルダーでフォームを作成・管理"
+        action={<button onClick={openCreate} className="px-4 py-2 text-sm font-medium text-white rounded-lg" style={{ backgroundColor: '#06C755' }}>+ 新規フォーム</button>} />
+
+      {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}<button onClick={() => setError('')} className="ml-2 text-red-400">×</button></div>}
+      {success && <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">{success}<button onClick={() => setSuccess('')} className="ml-2 text-green-400">×</button></div>}
+
+      <div className="flex border-b border-gray-200 mb-6">
+        {([['list', 'フォーム一覧'], ['builder', editingForm ? 'フォーム編集' : '新規作成']] as [TabId, string][]).map(([id, label]) => (
+          <button key={id} onClick={() => setTab(id)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${tab === id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+            {label}
           </button>
-        }
-      />
+        ))}
+      </div>
 
-      {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>
-      )}
+      {tab === 'list' && <FormList forms={forms} loading={loading} onEdit={openEdit} onDelete={handleDelete} />}
+      {tab === 'builder' && <FormBuilder form={editingForm} tags={tags} scenarios={scenarios} onSaved={() => { load(); setTab('list') }} setError={setError} setSuccess={setSuccess} />}
+    </div>
+  )
+}
 
-      {isEditing && (
-        <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-sm font-semibold text-gray-800 mb-4">{editId ? 'フォームを編集' : '新規フォームを作成'}</h2>
-          <div className="space-y-4 max-w-lg">
+// ─── Form List ──────────────────────────────────────────────────────────────
+
+function FormList({ forms, loading, onEdit, onDelete }: {
+  forms: Form[]; loading: boolean; onEdit: (f: Form) => void; onDelete: (id: string) => void
+}) {
+  if (loading) return <div className="card p-8 text-center text-gray-400">読み込み中...</div>
+  if (forms.length === 0) return <div className="card p-12 text-center"><p className="text-gray-400 text-lg mb-2">📝</p><p className="text-gray-500">フォームがありません</p></div>
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      {forms.map((f) => (
+        <div key={f.id} className="card p-5">
+          <div className="flex items-start justify-between mb-3">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">フォーム名 <span className="text-red-500">*</span></label>
-              <input type="text" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                placeholder="例: お問い合わせフォーム" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              <h3 className="text-sm font-semibold text-gray-900">{f.name}</h3>
+              {f.description && <p className="text-xs text-gray-400 mt-0.5">{f.description}</p>}
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">説明</label>
-              <input type="text" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                placeholder="フォームの説明" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${f.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+              {f.isActive ? '有効' : '無効'}
+            </span>
+          </div>
+          <div className="flex items-center gap-3 text-xs text-gray-400 mb-3">
+            <span>📋 {f.fields.length} フィールド</span>
+            <span>📬 {f.submitCount} 回答</span>
+            {f.kintoneEnabled && <span className="text-blue-500">🔗 kintone</span>}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => onEdit(f)} className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100">編集</button>
+            <button onClick={() => onDelete(f.id)} className="px-3 py-1.5 text-xs font-medium text-red-500 bg-red-50 rounded-md hover:bg-red-100">削除</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ─── Form Builder ───────────────────────────────────────────────────────────
+
+function FormBuilder({ form, tags, scenarios, onSaved, setError, setSuccess }: {
+  form: Form | null
+  tags: { id: string; name: string }[]
+  scenarios: { id: string; name: string }[]
+  onSaved: () => void
+  setError: (s: string) => void
+  setSuccess: (s: string) => void
+}) {
+  const [name, setName] = useState(form?.name || '')
+  const [description, setDescription] = useState(form?.description || '')
+  const [fields, setFields] = useState<FormField[]>(form?.fields || [])
+  const [tagId, setTagId] = useState(form?.onSubmitTagId || '')
+  const [scenarioId, setScenarioId] = useState(form?.onSubmitScenarioId || '')
+  const [kintoneEnabled, setKintoneEnabled] = useState(form?.kintoneEnabled || false)
+  const [kintoneSubdomain, setKintoneSubdomain] = useState(form?.kintoneSubdomain || '')
+  const [kintoneAppId, setKintoneAppId] = useState(form?.kintoneAppId || '')
+  const [kintoneApiToken, setKintoneApiToken] = useState(form?.kintoneApiToken || '')
+  const [kintoneFieldMapping, setKintoneFieldMapping] = useState<Record<string, string>>(form?.kintoneFieldMapping || {})
+  const [kintoneFields, setKintoneFields] = useState<{ code: string; label: string; type: string }[]>([])
+  const [saving, setSaving] = useState(false)
+  const [kintoneTesting, setKintoneTesting] = useState(false)
+  const [builderTab, setBuilderTab] = useState<'fields' | 'settings' | 'kintone'>('fields')
+
+  const addField = (type: string) => {
+    const idx = fields.length + 1
+    const newField: FormField = {
+      name: `field_${idx}`,
+      type,
+      label: FIELD_TYPES.find(t => t.type === type)?.label || type,
+      required: false,
+      ...(type === 'radio' || type === 'select' || type === 'checkbox' ? { options: ['選択肢1', '選択肢2'] } : {}),
+    }
+    setFields([...fields, newField])
+  }
+
+  const updateField = (idx: number, patch: Partial<FormField>) => {
+    setFields(prev => prev.map((f, i) => i === idx ? { ...f, ...patch } : f))
+  }
+
+  const removeField = (idx: number) => setFields(prev => prev.filter((_, i) => i !== idx))
+  const moveField = (idx: number, dir: -1 | 1) => {
+    const newIdx = idx + dir
+    if (newIdx < 0 || newIdx >= fields.length) return
+    const arr = [...fields];
+    [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]]
+    setFields(arr)
+  }
+
+  const handleSave = async () => {
+    if (!name.trim()) { setError('フォーム名を入力してください'); return }
+    setSaving(true)
+    try {
+      const payload = {
+        name, description: description || null, fields,
+        onSubmitTagId: tagId || null, onSubmitScenarioId: scenarioId || null,
+        kintoneEnabled, kintoneSubdomain: kintoneSubdomain || null,
+        kintoneAppId: kintoneAppId || null, kintoneApiToken: kintoneApiToken || null,
+        kintoneFieldMapping: Object.keys(kintoneFieldMapping).length > 0 ? kintoneFieldMapping : null,
+      }
+      const url = form ? `/api/forms/${form.id}` : '/api/forms'
+      const method = form ? 'PUT' : 'POST'
+      const res = await fetchApi<{ success: boolean; error?: string }>(url, { method, body: JSON.stringify(payload) })
+      if (res.success) { setSuccess(form ? 'フォームを更新しました' : 'フォームを作成しました'); onSaved() }
+      else setError(res.error || '保存に失敗しました')
+    } catch { setError('保存に失敗しました') }
+    finally { setSaving(false) }
+  }
+
+  const testKintone = async () => {
+    if (!kintoneSubdomain || !kintoneAppId || !kintoneApiToken) { setError('kintone接続情報を入力してください'); return }
+    setKintoneTesting(true)
+    try {
+      const res = await fetchApi<{ success: boolean; data: { code: string; label: string; type: string }[]; error?: string }>(
+        `/api/forms/${form?.id || 'new'}/kintone-test`,
+        { method: 'POST', body: JSON.stringify({ subdomain: kintoneSubdomain, appId: kintoneAppId, apiToken: kintoneApiToken }) })
+      if (res.success) { setKintoneFields(res.data); setSuccess(`kintone接続成功: ${res.data.length} フィールド取得`) }
+      else setError(res.error || 'kintone接続に失敗しました')
+    } catch { setError('kintone接続テストに失敗しました') }
+    finally { setKintoneTesting(false) }
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Left: Field palette */}
+      <div className="lg:col-span-1">
+        <div className="card p-4 sticky top-4">
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">フィールド追加</h3>
+          <div className="grid grid-cols-2 gap-2">
+            {FIELD_TYPES.map((ft) => (
+              <button key={ft.type} onClick={() => addField(ft.type)}
+                className="flex items-center gap-2 px-3 py-2.5 text-xs font-medium text-gray-700 bg-gray-50 rounded-lg hover:bg-blue-50 hover:text-blue-700 transition-colors border border-gray-200 hover:border-blue-200">
+                <span className="text-sm">{ft.emoji}</span>
+                {ft.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Right: Builder + Preview */}
+      <div className="lg:col-span-2 space-y-4">
+        {/* Sub-tabs */}
+        <div className="flex gap-2 mb-2">
+          {[['fields', '📋 フィールド'], ['settings', '⚙️ 設定'], ['kintone', '🔗 kintone連携']] .map(([id, label]) => (
+            <button key={id} onClick={() => setBuilderTab(id as typeof builderTab)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${builderTab === id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {builderTab === 'fields' && (
+          <div className="card p-5">
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">フォーム名 *</label>
+                <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="お問い合わせフォーム"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">説明</label>
+                <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="フォームの説明"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">フィールド定義 (JSON)</label>
-              <textarea className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
-                rows={5} placeholder='[{"name":"email","type":"text","label":"メールアドレス","required":true}]'
-                value={form.fields} onChange={(e) => setForm({ ...form, fields: e.target.value })} />
-              <p className="text-xs text-gray-400 mt-1">JSON配列で定義。各フィールド: name, type, label, required</p>
-            </div>
+
+            {fields.length === 0 ? (
+              <div className="py-12 text-center text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
+                <p className="text-2xl mb-2">📋</p>
+                <p className="text-sm">左のパレットからフィールドを追加してください</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {fields.map((field, idx) => (
+                  <div key={idx} className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-xs font-bold text-gray-400 w-6">#{idx + 1}</span>
+                      <span className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded">{FIELD_TYPES.find(t => t.type === field.type)?.label || field.type}</span>
+                      <div className="flex-1" />
+                      <button onClick={() => moveField(idx, -1)} disabled={idx === 0} className="text-gray-400 hover:text-gray-600 disabled:opacity-30 text-xs">▲</button>
+                      <button onClick={() => moveField(idx, 1)} disabled={idx === fields.length - 1} className="text-gray-400 hover:text-gray-600 disabled:opacity-30 text-xs">▼</button>
+                      <button onClick={() => removeField(idx)} className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-[10px] text-gray-500 mb-0.5">ラベル</label>
+                        <input type="text" value={field.label} onChange={(e) => updateField(idx, { label: e.target.value })}
+                          className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-gray-500 mb-0.5">フィールド名</label>
+                        <input type="text" value={field.name} onChange={(e) => updateField(idx, { name: e.target.value })}
+                          className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm font-mono" />
+                      </div>
+                      <div className="flex items-end gap-2">
+                        <label className="flex items-center gap-1 text-xs text-gray-600">
+                          <input type="checkbox" checked={field.required || false} onChange={(e) => updateField(idx, { required: e.target.checked })}
+                            className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600" />
+                          必須
+                        </label>
+                      </div>
+                    </div>
+                    {(field.type === 'radio' || field.type === 'select' || field.type === 'checkbox') && (
+                      <div className="mt-2">
+                        <label className="block text-[10px] text-gray-500 mb-0.5">選択肢（改行区切り）</label>
+                        <textarea value={(field.options || []).join('\n')} rows={3}
+                          onChange={(e) => updateField(idx, { options: e.target.value.split('\n').filter(Boolean) })}
+                          className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" placeholder="選択肢1&#10;選択肢2&#10;選択肢3" />
+                      </div>
+                    )}
+                    {(field.type === 'text' || field.type === 'email' || field.type === 'tel' || field.type === 'textarea') && (
+                      <div className="mt-2">
+                        <label className="block text-[10px] text-gray-500 mb-0.5">プレースホルダー</label>
+                        <input type="text" value={field.placeholder || ''} onChange={(e) => updateField(idx, { placeholder: e.target.value })}
+                          className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {builderTab === 'settings' && (
+          <div className="card p-5 space-y-4">
+            <h3 className="text-sm font-semibold text-gray-800">送信時の設定</h3>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">送信時タグ付与</label>
-              <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
-                value={form.tagId} onChange={(e) => setForm({ ...form, tagId: e.target.value })}>
+              <select value={tagId} onChange={(e) => setTagId(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
                 <option value="">なし</option>
                 {tags.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">送信時シナリオ開始</label>
-              <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
-                value={form.scenarioId} onChange={(e) => setForm({ ...form, scenarioId: e.target.value })}>
+              <select value={scenarioId} onChange={(e) => setScenarioId(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
                 <option value="">なし</option>
                 {scenarios.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
-            {formError && <p className="text-xs text-red-600">{formError}</p>}
-            <div className="flex gap-2">
-              <button onClick={handleSave} disabled={saving}
-                className="px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 transition-opacity" style={{ backgroundColor: '#06C755' }}>
-                {saving ? '保存中...' : editId ? '更新' : '作成'}
-              </button>
-              <button onClick={() => { setShowCreate(false); setEditId(null); setFormError('') }}
-                className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
-                キャンセル
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {loading ? (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="px-4 py-4 border-b border-gray-100 flex items-center gap-4 animate-pulse">
-              <div className="flex-1 space-y-2">
-                <div className="h-3 bg-gray-200 rounded w-48" />
-                <div className="h-2 bg-gray-100 rounded w-32" />
-              </div>
-              <div className="h-5 bg-gray-100 rounded-full w-16" />
+        {builderTab === 'kintone' && (
+          <div className="card p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-800">kintone連携</h3>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={kintoneEnabled} onChange={(e) => setKintoneEnabled(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+                有効
+              </label>
             </div>
-          ))}
-        </div>
-      ) : forms.length === 0 && !isEditing ? (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-          <p className="text-gray-500">フォームがありません。「新規フォーム」から作成してください。</p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px]">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">フォーム名</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">ステータス</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">フィールド数</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">作成日時</th>
-                  <th className="px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {forms.map((f) => {
-                  let fieldCount = 0
-                  try { fieldCount = JSON.parse(f.fields).length } catch { /* ignore */ }
-                  return (
-                    <tr key={f.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3">
-                        <button onClick={() => openEdit(f.id)} className="text-sm font-medium text-gray-900 hover:text-green-600 transition-colors text-left">
-                          {f.name}
-                        </button>
-                        {f.description && <p className="text-xs text-gray-400 mt-0.5">{f.description}</p>}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${f.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                          {f.isActive ? '有効' : '無効'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{fieldCount} フィールド</td>
-                      <td className="px-4 py-3 text-sm text-gray-500">{formatDate(f.createdAt)}</td>
-                      <td className="px-4 py-3 text-right">
-                        <button onClick={() => handleDelete(f.id)}
-                          className="px-3 py-1 text-xs font-medium text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-md transition-colors">
-                          削除
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+            {kintoneEnabled && (
+              <>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">サブドメイン</label>
+                    <input type="text" value={kintoneSubdomain} onChange={(e) => setKintoneSubdomain(e.target.value)} placeholder="xxx"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                    <p className="text-[10px] text-gray-400 mt-0.5">xxx.cybozu.com</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">アプリID</label>
+                    <input type="text" value={kintoneAppId} onChange={(e) => setKintoneAppId(e.target.value)} placeholder="10"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">APIトークン</label>
+                    <input type="password" value={kintoneApiToken} onChange={(e) => setKintoneApiToken(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  </div>
+                </div>
+                <button onClick={testKintone} disabled={kintoneTesting}
+                  className="px-4 py-2 text-xs font-medium text-white bg-blue-600 rounded-lg disabled:opacity-50">
+                  {kintoneTesting ? 'テスト中...' : '接続テスト'}
+                </button>
+                {kintoneFields.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-gray-600 mb-2">フィールドマッピング</h4>
+                    <div className="space-y-2">
+                      {fields.map((f) => (
+                        <div key={f.name} className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
+                          <span className="text-xs font-medium text-gray-700 w-32 truncate">{f.label}</span>
+                          <span className="text-gray-400 text-xs">→</span>
+                          <select value={kintoneFieldMapping[f.name] || ''} onChange={(e) => setKintoneFieldMapping(prev => ({ ...prev, [f.name]: e.target.value }))}
+                            className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs">
+                            <option value="">-- 未設定 --</option>
+                            {kintoneFields.map(kf => <option key={kf.code} value={kf.code}>{kf.label} ({kf.code})</option>)}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
-        </div>
-      )}
+        )}
+
+        <button onClick={handleSave} disabled={saving || !name.trim()}
+          className="w-full py-3 text-sm font-medium text-white rounded-xl disabled:opacity-50 transition-opacity" style={{ backgroundColor: '#06C755' }}>
+          {saving ? '保存中...' : form ? 'フォームを更新' : 'フォームを作成'}
+        </button>
+      </div>
     </div>
   )
 }
