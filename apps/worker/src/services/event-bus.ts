@@ -18,6 +18,9 @@ import {
   addTagToFriend,
   removeTagFromFriend,
   enrollFriendInScenario,
+  getFriendById,
+  getFriendTags,
+  getFriendScore,
   jstNow,
 } from '@line-crm/db';
 import { LineClient } from '@line-crm/line-sdk';
@@ -65,12 +68,41 @@ async function fireOutgoingWebhooks(
 ): Promise<void> {
   try {
     const webhooks = await getActiveOutgoingWebhooksByEvent(db, eventType);
+    console.log(`fireOutgoingWebhooks: event=${eventType} 対象webhook数=${webhooks.length}`);
+    // 友だち詳細情報を事前取得（friendId がある場合）
+    let friendDetail: Record<string, unknown> | null = null;
+    if (payload.friendId) {
+      try {
+        const [friend, tags, score] = await Promise.all([
+          getFriendById(db, payload.friendId),
+          getFriendTags(db, payload.friendId),
+          getFriendScore(db, payload.friendId),
+        ]);
+        if (friend) {
+          friendDetail = {
+            lineUserId: friend.line_user_id,
+            displayName: friend.display_name,
+            pictureUrl: friend.picture_url,
+            tags: tags.map((t) => ({ id: t.id, name: t.name })),
+            score,
+            metadata: (() => { try { return JSON.parse(friend.metadata); } catch { return {}; } })(),
+            createdAt: friend.created_at,
+          };
+        }
+      } catch (err) {
+        console.error('友だち詳細情報の取得失敗:', err);
+      }
+    }
+
     for (const wh of webhooks) {
       try {
         const body = JSON.stringify({
           event: eventType,
           timestamp: jstNow(),
-          data: payload,
+          data: {
+            ...payload,
+            friend: friendDetail,
+          },
         });
 
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -92,7 +124,9 @@ async function fireOutgoingWebhooks(
           headers['X-Webhook-Signature'] = hexSignature;
         }
 
-        await fetch(wh.url, { method: 'POST', headers, body });
+        console.log(`送信Webhook ${wh.id} (${wh.name}) へ送信: ${wh.url}`);
+        const res = await fetch(wh.url, { method: 'POST', headers, body });
+        console.log(`送信Webhook ${wh.id} レスポンス: HTTP ${res.status}`);
       } catch (err) {
         console.error(`送信Webhook ${wh.id} への通知失敗:`, err);
       }

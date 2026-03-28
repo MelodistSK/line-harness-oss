@@ -125,7 +125,7 @@ function AccountSwitcher() {
       </button>
 
       {open && (
-        <div className="mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+        <div className="mt-1 rounded-lg overflow-hidden" style={{ backgroundColor: '#1e1e3a', border: '1px solid rgba(148,148,215,0.15)', boxShadow: '0 8px 28px rgba(0,0,0,0.5)' }}>
           {accounts.map((account) => {
             const isSelected = account.id === selectedAccount?.id
             const name = account.displayName || account.name
@@ -137,20 +137,20 @@ function AccountSwitcher() {
                   setOpen(false)
                 }}
                 className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors ${
-                  isSelected ? 'bg-green-50' : 'hover:bg-gray-50'
+                  isSelected ? 'bg-white/8' : 'hover:bg-white/5'
                 }`}
               >
                 <AccountAvatar account={account} size={24} />
                 <div className="flex-1 min-w-0">
-                  <p className={`text-sm truncate ${isSelected ? 'font-semibold text-green-700' : 'text-gray-700'}`}>
+                  <p className={`text-sm truncate ${isSelected ? 'font-semibold text-green-400' : 'text-white/75'}`}>
                     {name}
                   </p>
                   {account.basicId && (
-                    <p className="text-xs text-gray-400 truncate">{account.basicId}</p>
+                    <p className="text-xs text-white/30 truncate">{account.basicId}</p>
                   )}
                 </div>
                 {isSelected && (
-                  <svg className="w-4 h-4 text-green-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
                 )}
@@ -255,13 +255,13 @@ export default function Sidebar() {
   return (
     <>
       {/* モバイル: ハンバーガーヘッダー */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 px-4 py-3 flex items-center gap-3" style={{ backgroundColor: '#1a1a2e', borderBottom: '1px solid rgba(148,148,215,0.12)' }}>
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+          className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors"
           aria-label="メニュー"
         >
-          <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-6 h-6 text-white/75" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             {isOpen
               ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -270,7 +270,7 @@ export default function Sidebar() {
         </button>
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white font-bold text-xs" style={{ backgroundColor: '#06C755' }}>H</div>
-          <p className="text-sm font-bold text-gray-900">LINE Harness</p>
+          <p className="text-sm font-bold text-white">LINE Harness</p>
         </div>
       </div>
 

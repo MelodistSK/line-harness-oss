@@ -5,6 +5,16 @@
   --color-line-green: #06C755;
   --color-navy: #1a1a2e;
   --color-navy-light: #232340;
+
+  /* Dark theme surfaces */
+  --surface-bg:     #0d0d1e;
+  --surface-card:   #14142c;
+  --surface-raised: #1c1c38;
+  --border-subtle:  rgba(148, 148, 215, 0.10);
+  --border-default: rgba(148, 148, 215, 0.17);
+  --text-primary:   #e4e4f4;
+  --text-secondary: #8f8fb8;
+  --text-muted:     #5e5e80;
 }
 
 /* ─── Base Typography ──────────────────────────────────────────────────── */
@@ -12,33 +22,134 @@ body {
   font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #f8f9fb;
-  color: #1e293b;
+  background-color: var(--surface-bg);
+  color: var(--text-primary);
 }
 
 /* ─── Enhanced Cards ───────────────────────────────────────────────────── */
 .card {
-  background: #fff;
+  background: var(--surface-card);
   border-radius: 16px;
-  border: 1px solid #e8ecf1;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
+  border: 1px solid var(--border-subtle);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.40),
+    0 1px 4px  rgba(0, 0, 0, 0.25);
+  transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
 }
 .card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.50),
+    0 2px 8px  rgba(0, 0, 0, 0.30);
   transform: translateY(-1px);
+  border-color: var(--border-default);
 }
 
 /* ─── Zebra-stripe tables ──────────────────────────────────────────────── */
 .zebra-table tbody tr:nth-child(even) {
-  background-color: #f9fafb;
+  background-color: rgba(255, 255, 255, 0.025);
 }
 .zebra-table tbody tr:hover {
-  background-color: #f0fdf4;
+  background-color: rgba(6, 199, 85, 0.06);
 }
 
 /* ─── Scrollbar (webkit) ───────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+::-webkit-scrollbar-thumb { background: rgba(148, 148, 215, 0.22); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(148, 148, 215, 0.38); }
+
+/* ─── Main Content: Dark Overrides ────────────────────────────────────── */
+/* Scope everything to <main> so the sidebar is unaffected                 */
+
+/* Backgrounds */
+main .bg-white      { background-color: var(--surface-card)   !important; }
+main .bg-gray-50    { background-color: var(--surface-bg)     !important; }
+main .bg-gray-100   { background-color: var(--surface-raised) !important; }
+main .bg-gray-200   { background-color: #22223e              !important; }
+
+/* Borders */
+main .border-gray-100 { border-color: var(--border-subtle)  !important; }
+main .border-gray-200 { border-color: var(--border-default) !important; }
+main .border-gray-300 { border-color: rgba(148,148,215,0.26) !important; }
+main .divide-gray-100 > * + * { border-color: var(--border-subtle)  !important; }
+main .divide-gray-200 > * + * { border-color: var(--border-default) !important; }
+
+/* Text */
+main .text-gray-900 { color: var(--text-primary)   !important; }
+main .text-gray-800 { color: #d0d0ec               !important; }
+main .text-gray-700 { color: #b8b8d8               !important; }
+main .text-gray-600 { color: #a0a0c4               !important; }
+main .text-gray-500 { color: var(--text-secondary) !important; }
+main .text-gray-400 { color: #787898               !important; }
+main .text-gray-300 { color: var(--text-muted)     !important; }
+
+/* Hover backgrounds */
+main .hover\:bg-gray-50:hover  { background-color: rgba(255,255,255,0.04) !important; }
+main .hover\:bg-gray-100:hover { background-color: rgba(255,255,255,0.07) !important; }
+main .hover\:text-gray-900:hover { color: var(--text-primary)   !important; }
+main .hover\:text-gray-500:hover { color: var(--text-secondary) !important; }
+main .hover\:border-gray-200:hover { border-color: var(--border-default) !important; }
+
+/* Status badge backgrounds → translucent tint */
+main .bg-green-100  { background-color: rgba(6,   199,  85,  0.14) !important; }
+main .bg-blue-100   { background-color: rgba(59,  130,  246, 0.14) !important; }
+main .bg-yellow-100 { background-color: rgba(245, 158,  11,  0.14) !important; }
+main .bg-red-100    { background-color: rgba(239,  68,  68,  0.14) !important; }
+main .bg-purple-100 { background-color: rgba(139,  92,  246, 0.14) !important; }
+main .bg-indigo-100 { background-color: rgba(99,  102,  241, 0.14) !important; }
+main .bg-pink-100   { background-color: rgba(236,  72,  153, 0.14) !important; }
+main .bg-orange-100 { background-color: rgba(249, 115,  22,  0.14) !important; }
+
+/* Status badge text → brighter on dark */
+main .text-green-700  { color: #4ade80 !important; }
+main .text-green-600  { color: #34d058 !important; }
+main .text-green-800  { color: #86efac !important; }
+main .text-blue-700   { color: #60a5fa !important; }
+main .text-blue-600   { color: #3b9efa !important; }
+main .text-yellow-700 { color: #fbbf24 !important; }
+main .text-yellow-600 { color: #f59e0b !important; }
+main .text-red-700    { color: #f87171 !important; }
+main .text-red-600    { color: #ef5350 !important; }
+main .text-red-400    { color: #fc8181 !important; }
+main .text-red-500    { color: #f87171 !important; }
+main .text-purple-700 { color: #a78bfa !important; }
+main .text-purple-600 { color: #9c72f9 !important; }
+main .text-indigo-700 { color: #818cf8 !important; }
+main .text-orange-700 { color: #fb923c !important; }
+
+/* Solid action buttons — keep but slightly richer */
+main .bg-green-600  { background-color: #059644 !important; }
+main .bg-blue-600   { background-color: #2563eb !important; }
+main .bg-red-600    { background-color: #dc2626 !important; }
+main .hover\:bg-green-700:hover { background-color: #047a37 !important; }
+main .hover\:bg-blue-700:hover  { background-color: #1d4ed8 !important; }
+main .hover\:bg-red-700:hover   { background-color: #b91c1c !important; }
+
+/* Form elements */
+main input:not([type="checkbox"]):not([type="radio"]),
+main textarea,
+main select {
+  background-color: var(--surface-raised) !important;
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+main input:not([type="checkbox"]):not([type="radio"]):focus,
+main textarea:focus,
+main select:focus {
+  border-color: rgba(6, 199, 85, 0.5) !important;
+  box-shadow: 0 0 0 3px rgba(6, 199, 85, 0.10) !important;
+  outline: none;
+}
+main input::placeholder,
+main textarea::placeholder { color: var(--text-muted) !important; }
+
+/* Tables */
+main table  { border-color: var(--border-subtle) !important; }
+main th     { background-color: var(--surface-raised) !important; color: var(--text-secondary) !important; border-color: var(--border-subtle) !important; }
+main td     { border-color: var(--border-subtle) !important; }
+
+/* Shadow helpers sometimes used on white panels */
+main .shadow-sm  { box-shadow: 0 2px 12px rgba(0,0,0,0.35) !important; }
+main .shadow     { box-shadow: 0 4px 20px rgba(0,0,0,0.40) !important; }
+main .shadow-lg  { box-shadow: 0 8px 32px rgba(0,0,0,0.50) !important; }
+main .shadow-xl  { box-shadow: 0 12px 40px rgba(0,0,0,0.55) !important; }

@@ -86,7 +86,7 @@ export async function createOutgoingWebhook(
   const id = crypto.randomUUID();
   const now = jstNow();
   await db
-    .prepare(`INSERT INTO outgoing_webhooks (id, name, url, event_types, secret, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .prepare(`INSERT INTO outgoing_webhooks (id, name, url, event_types, secret, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)`)
     .bind(id, input.name, input.url, JSON.stringify(input.eventTypes), input.secret ?? null, now, now)
     .run();
   return (await getOutgoingWebhookById(db, id))!;
@@ -121,7 +121,15 @@ export async function getActiveOutgoingWebhooksByEvent(db: D1Database, eventType
     .prepare(`SELECT * FROM outgoing_webhooks WHERE is_active = 1`)
     .all<OutgoingWebhookRow>();
   return all.results.filter((w) => {
-    const types: string[] = JSON.parse(w.event_types);
-    return types.includes(eventType) || types.includes('*');
+    try {
+      let types: unknown = JSON.parse(w.event_types);
+      // ダブルエンコード対策: string が返ってきた場合は再度パース
+      if (typeof types === 'string') types = JSON.parse(types);
+      if (!Array.isArray(types)) return false;
+      return (types as string[]).includes(eventType) || (types as string[]).includes('*');
+    } catch {
+      console.error(`outgoing_webhook ${w.id} の event_types が不正なJSON: ${w.event_types}`);
+      return false;
+    }
   });
 }
