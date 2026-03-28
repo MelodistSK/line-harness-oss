@@ -394,12 +394,34 @@ CREATE TABLE IF NOT EXISTS calendar_bookings (
   end_at         TEXT NOT NULL,
   status         TEXT NOT NULL DEFAULT 'confirmed' CHECK (status IN ('confirmed', 'cancelled', 'completed')),
   metadata       TEXT,
+  booking_data   TEXT,
   created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
   updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_calendar_bookings_friend ON calendar_bookings (friend_id);
 CREATE INDEX IF NOT EXISTS idx_calendar_bookings_start ON calendar_bookings (start_at);
+
+-- ============================================================
+-- Calendar Settings
+-- ============================================================
+CREATE TABLE IF NOT EXISTS calendar_settings (
+  id TEXT PRIMARY KEY,
+  google_client_email TEXT,
+  google_private_key TEXT,
+  google_calendar_id TEXT,
+  business_hours_start TEXT NOT NULL DEFAULT '09:00',
+  business_hours_end TEXT NOT NULL DEFAULT '18:00',
+  slot_duration INTEGER NOT NULL DEFAULT 30,
+  closed_days TEXT NOT NULL DEFAULT '["sun"]',
+  closed_dates TEXT NOT NULL DEFAULT '[]',
+  booking_fields TEXT NOT NULL DEFAULT '[{"name":"name","label":"お名前","required":true},{"name":"phone","label":"電話番号","required":true},{"name":"email","label":"メール","required":false},{"name":"note","label":"備考","required":false}]',
+  booking_reply_enabled INTEGER NOT NULL DEFAULT 1,
+  booking_reply_content TEXT,
+  max_advance_days INTEGER NOT NULL DEFAULT 30,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+);
 
 -- ============================================================
 -- Reminders (Countdown/Reminder)
@@ -624,7 +646,7 @@ CREATE TABLE IF NOT EXISTS automation_logs (
 CREATE INDEX IF NOT EXISTS idx_automation_logs_automation ON automation_logs (automation_id);
 
 -- ============================================================
--- Summary: 42 Tables
+-- Summary: 43 Tables
 -- ============================================================
 -- Core: friends, tags, friend_tags, scenarios, scenario_steps, friend_scenarios, broadcasts, messages_log
 -- Auth: admin_users
@@ -634,7 +656,7 @@ CREATE INDEX IF NOT EXISTS idx_automation_logs_automation ON automation_logs (au
 --   - Refs: tracked_links, link_clicks
 --   - Forms: forms, form_submissions
 --   - Webhooks: incoming_webhooks, outgoing_webhooks
---   - Calendar: google_calendar_connections, calendar_bookings
+--   - Calendar: google_calendar_connections, calendar_bookings, calendar_settings
 --   - Reminders: reminders, reminder_steps, friend_reminders, friend_reminder_deliveries
 --   - Scoring: scoring_rules, friend_scores
 --   - Templates: templates
@@ -644,4 +666,4 @@ CREATE INDEX IF NOT EXISTS idx_automation_logs_automation ON automation_logs (au
 --   - Health: account_health_logs, account_migrations
 --   - Automations: automations, automation_logs
 --   - Auto-replies: auto_replies (with line_account_id support)
--- Total: 8 + 1 + 6 + 27 = 42 tables
+-- Total: 8 + 1 + 6 + 28 = 43 tables

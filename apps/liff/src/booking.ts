@@ -28,6 +28,12 @@ interface Slot {
   available: boolean;
 }
 
+interface BookingField {
+  name: string;
+  label: string;
+  required: boolean;
+}
+
 interface BookingState {
   currentYear: number;
   currentMonth: number; // 0-indexed
@@ -38,6 +44,9 @@ interface BookingState {
   friendId: string | null;
   loading: boolean;
   submitting: boolean;
+  bookingFields: BookingField[];
+  formData: Record<string, string>;
+  step: 'calendar' | 'form' | 'confirm';
 }
 
 const state: BookingState = {
@@ -50,6 +59,9 @@ const state: BookingState = {
   friendId: null,
   loading: false,
   submitting: false,
+  bookingFields: [],
+  formData: {},
+  step: 'calendar',
 };
 
 function escapeHtml(str: string): string {
@@ -198,31 +210,57 @@ function renderSlots(): string {
   `;
 }
 
+// ========== Form Section ==========
+
+function renderForm(): string {
+  const { selectedSlot, selectedDate, bookingFields, formData } = state;
+  if (!selectedSlot || !selectedDate || state.step !== 'form') return '';
+
+  const fields = bookingFields.map(f => `
+    <div class="form-field">
+      <label class="form-label">${escapeHtml(f.label)}${f.required ? ' <span style="color:#e53e3e">*</span>' : ''}</label>
+      <input type="text" class="form-input" data-field="${f.name}" value="${escapeHtml(formData[f.name] || '')}" placeholder="${escapeHtml(f.label)}" ${f.required ? 'required' : ''} />
+    </div>
+  `).join('');
+
+  return `
+    <div class="form-section">
+      <div class="confirm-card">
+        <h3>お客様情報</h3>
+        <p class="form-date-info">${formatDateJa(selectedDate)} ${formatTime(selectedSlot.startAt)} - ${formatTime(selectedSlot.endAt)}</p>
+        ${fields}
+        <div style="display:flex;gap:8px;margin-top:16px">
+          <button class="back-btn" data-action="back-to-calendar">戻る</button>
+          <button class="book-btn" data-action="go-to-confirm">確認画面へ</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 // ========== Confirm Section ==========
 
 function renderConfirm(): string {
-  const { selectedSlot, selectedDate, profile } = state;
-  if (!selectedSlot || !selectedDate) return '';
+  const { selectedSlot, selectedDate, formData, bookingFields } = state;
+  if (!selectedSlot || !selectedDate || state.step !== 'confirm') return '';
+
+  const detailRows = [
+    `<div class="confirm-row"><span class="confirm-label">日付</span><span class="confirm-value">${formatDateJa(selectedDate)}</span></div>`,
+    `<div class="confirm-row"><span class="confirm-label">時間</span><span class="confirm-value">${formatTime(selectedSlot.startAt)} - ${formatTime(selectedSlot.endAt)}</span></div>`,
+    ...bookingFields.filter(f => formData[f.name]).map(f =>
+      `<div class="confirm-row"><span class="confirm-label">${escapeHtml(f.label)}</span><span class="confirm-value">${escapeHtml(formData[f.name])}</span></div>`
+    ),
+  ].join('');
 
   return `
     <div class="confirm-section">
       <div class="confirm-card">
         <h3>予約内容の確認</h3>
-        <div class="confirm-details">
-          <div class="confirm-row">
-            <span class="confirm-label">日付</span>
-            <span class="confirm-value">${formatDateJa(selectedDate)}</span>
-          </div>
-          <div class="confirm-row">
-            <span class="confirm-label">時間</span>
-            <span class="confirm-value">${formatTime(selectedSlot.startAt)} - ${formatTime(selectedSlot.endAt)}</span>
-          </div>
-          <div class="confirm-row">
-            <span class="confirm-label">お名前</span>
-            <span class="confirm-value">${profile ? escapeHtml(profile.displayName) : '---'}</span>
-          </div>
+        <div class="confirm-details">${detailRows}</div>
+        <div style="display:flex;gap:8px;margin-top:16px">
+          <button class="back-btn" data-action="back-to-form">戻る</button>
+          <button class="book-btn" data-action="confirm-booking">予約を確定する</button>
         </div>
-        <button class="book-btn" data-action="confirm-booking">予約を確定する</button>
       </div>
     </div>
   `;
@@ -232,17 +270,22 @@ function renderConfirm(): string {
 
 function render(): void {
   const app = getApp();
-  app.innerHTML = `
-    <div class="booking-page">
-      <div class="booking-header">
-        <h1>予約</h1>
-        <p>ご希望の日時をお選びください</p>
+  if (state.step === 'form') {
+    app.innerHTML = `<div class="booking-page">${renderForm()}</div>`;
+  } else if (state.step === 'confirm') {
+    app.innerHTML = `<div class="booking-page">${renderConfirm()}</div>`;
+  } else {
+    app.innerHTML = `
+      <div class="booking-page">
+        <div class="booking-header">
+          <h1>予約</h1>
+          <p>ご希望の日時をお選びください</p>
+        </div>
+        ${renderCalendar()}
+        ${renderSlots()}
       </div>
-      ${renderCalendar()}
-      ${renderSlots()}
-      ${renderConfirm()}
-    </div>
-  `;
+    `;
+  }
   attachEvents();
 }
 
@@ -342,33 +385,60 @@ function attachEvents(): void {
     });
   });
 
-  // Slot selection
+  // Slot selection → go to form step
   app.querySelectorAll('.slot-btn.available').forEach((btn) => {
     btn.addEventListener('click', () => {
       const startAt = (btn as HTMLElement).dataset.start!;
       const endAt = (btn as HTMLElement).dataset.end!;
       state.selectedSlot = { startAt, endAt, available: true };
+      // Pre-fill name from profile
+      if (state.profile && !state.formData.name) {
+        state.formData.name = state.profile.displayName;
+      }
+      state.step = state.bookingFields.length > 0 ? 'form' : 'confirm';
       render();
-      // Scroll to confirm
-      setTimeout(() => {
-        const confirmEl = getApp().querySelector('.confirm-section');
-        confirmEl?.scrollIntoView({ behavior: 'smooth' });
-      }, 50);
     });
   });
 
+  // Form input tracking
+  app.querySelectorAll('.form-input').forEach((input) => {
+    input.addEventListener('input', () => {
+      const el = input as HTMLInputElement;
+      const field = el.dataset.field;
+      if (field) state.formData[field] = el.value;
+    });
+  });
+
+  // Form navigation
+  app.querySelector('[data-action="back-to-calendar"]')?.addEventListener('click', () => {
+    state.step = 'calendar';
+    render();
+  });
+  app.querySelector('[data-action="go-to-confirm"]')?.addEventListener('click', () => {
+    // Validate required fields
+    for (const f of state.bookingFields) {
+      if (f.required && !state.formData[f.name]?.trim()) {
+        alert(`${f.label}を入力してください`);
+        return;
+      }
+    }
+    state.step = 'confirm';
+    render();
+  });
+  app.querySelector('[data-action="back-to-form"]')?.addEventListener('click', () => {
+    state.step = state.bookingFields.length > 0 ? 'form' : 'calendar';
+    render();
+  });
+
   // Confirm booking
-  const confirmBtn = app.querySelector('[data-action="confirm-booking"]');
-  confirmBtn?.addEventListener('click', () => submitBooking());
+  app.querySelector('[data-action="confirm-booking"]')?.addEventListener('click', () => submitBooking());
 }
 
 // ========== API Calls ==========
 
 async function fetchSlots(date: string): Promise<void> {
   try {
-    const params = new URLSearchParams({ date });
-    if (CONNECTION_ID) params.set('connectionId', CONNECTION_ID);
-    const res = await apiCall(`/api/integrations/google-calendar/slots?${params}`);
+    const res = await apiCall(`/api/calendar/available?date=${date}`);
     if (!res.ok) throw new Error('スロット取得に失敗しました');
     const json = await res.json() as { success: boolean; data: Slot[] };
     if (!json.success) throw new Error('スロット取得に失敗しました');
@@ -382,9 +452,21 @@ async function fetchSlots(date: string): Promise<void> {
   }
 }
 
+async function fetchSettings(): Promise<void> {
+  try {
+    const res = await apiCall('/api/calendar/settings-public');
+    if (res.ok) {
+      const json = await res.json() as { success: boolean; data?: { bookingFields?: BookingField[] } };
+      if (json.success && json.data?.bookingFields) {
+        state.bookingFields = json.data.bookingFields;
+      }
+    }
+  } catch { /* use defaults */ }
+}
+
 async function submitBooking(): Promise<void> {
-  const { selectedSlot, selectedDate, profile, friendId } = state;
-  if (!selectedSlot || !selectedDate || !profile || state.submitting) return;
+  const { selectedSlot, selectedDate, profile, friendId, formData } = state;
+  if (!selectedSlot || !selectedDate || state.submitting) return;
   state.submitting = true;
 
   const confirmBtn = getApp().querySelector('[data-action="confirm-booking"]') as HTMLButtonElement | null;
@@ -395,14 +477,15 @@ async function submitBooking(): Promise<void> {
 
   try {
     const body: Record<string, unknown> = {
-      title: `${profile.displayName}様 予約`,
-      startAt: selectedSlot.startAt,
-      endAt: selectedSlot.endAt,
+      date: selectedDate,
+      startTime: selectedSlot.startAt,
+      endTime: selectedSlot.endAt,
+      bookingData: formData,
     };
-    if (CONNECTION_ID) body.connectionId = CONNECTION_ID;
     if (friendId) body.friendId = friendId;
+    if (profile) body.bookingData = { ...formData, lineDisplayName: profile.displayName };
 
-    const res = await apiCall('/api/integrations/google-calendar/book', {
+    const res = await apiCall('/api/calendar/book', {
       method: 'POST',
       body: JSON.stringify(body),
     });
@@ -424,6 +507,9 @@ async function submitBooking(): Promise<void> {
 export async function initBooking(): Promise<void> {
   const profile = await liff.getProfile();
   state.profile = profile;
+
+  // Fetch booking field settings
+  await fetchSettings();
 
   // Try to get friendId from UUID linking
   const UUID_STORAGE_KEY = 'lh_uuid';

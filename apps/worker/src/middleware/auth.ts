@@ -21,7 +21,10 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
     path.match(/^\/api\/forms\/[^/]+\/submit$/) ||
     path.match(/^\/api\/forms\/[^/]+$/) || // GET form definition (public for LIFF)
     path.match(/^\/api\/rich-menus\/[^/]+\/image$/) || // handles own auth via ?token=
-    path.match(/^\/api\/forms\/[^/]+\/submissions\/csv$/) // CSV export (token in query)
+    path.match(/^\/api\/forms\/[^/]+\/submissions\/csv$/) || // CSV export (token in query)
+    path === '/api/calendar/available' ||
+    path === '/api/calendar/settings-public' ||
+    path.startsWith('/api/calendar/book')
   ) {
     return next();
   }
