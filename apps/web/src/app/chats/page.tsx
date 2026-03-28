@@ -223,35 +223,12 @@ function CarouselBuilder({ cards, onChange }: { cards: CarouselCard[]; onChange:
 
 // ── Quick Reply Editor ────────────────────────────────────────────────────────
 
-function QuickReplyEditor({ items, onChange }: { items: QuickReplyItem[]; onChange: (items: QuickReplyItem[]) => void }) {
-  const add = () => onChange([...items, { label: '', type: 'message', value: '' }])
-  const update = (i: number, patch: Partial<QuickReplyItem>) => onChange(items.map((it, idx) => idx === i ? { ...it, ...patch } : it))
-  const remove = (i: number) => onChange(items.filter((_, idx) => idx !== i))
-  return (
-    <div className="space-y-1">
-      {items.map((item, i) => (
-        <div key={i} className="flex gap-1 items-center">
-          <input className="flex-1 border border-gray-300 rounded px-2 py-1 text-[10px]" placeholder="ラベル" value={item.label} onChange={e => update(i, { label: e.target.value })} />
-          <select className="border border-gray-300 rounded px-1 py-1 text-[10px]" value={item.type} onChange={e => update(i, { type: e.target.value as 'message' | 'uri' })}>
-            <option value="message">テキスト</option><option value="uri">URL</option>
-          </select>
-          <input className="flex-1 border border-gray-300 rounded px-2 py-1 text-[10px]" placeholder={item.type === 'uri' ? 'https://...' : '送信テキスト'} value={item.value} onChange={e => update(i, { value: e.target.value })} />
-          <button onClick={() => remove(i)} className="text-red-400 text-[10px] px-0.5">✕</button>
-        </div>
-      ))}
-      {items.length < 13 && <button onClick={add} className="text-[10px] text-green-600">+ 選択肢追加</button>}
-    </div>
-  )
-}
-
 // ── Chat Message Composer ─────────────────────────────────────────────────────
 
 function ChatComposer({ onSend, sending }: { onSend: (msgType: string, content: string) => Promise<void>; sending: boolean }) {
   const [msgType, setMsgType] = useState('text')
   const [content, setContent] = useState('')
   const [carouselCards, setCarouselCards] = useState<CarouselCard[]>([{ title: '', text: '', imageUrl: '', buttons: [] }])
-  const [quickReplyEnabled, setQuickReplyEnabled] = useState(false)
-  const [quickReplyItems, setQuickReplyItems] = useState<QuickReplyItem[]>([])
   const [formsList, setFormsList] = useState<FormData[]>([])
   const [selectedFormId, setSelectedFormId] = useState('')
   const [templatesList, setTemplatesList] = useState<TemplateData[]>([])
@@ -276,12 +253,10 @@ function ChatComposer({ onSend, sending }: { onSend: (msgType: string, content: 
     const displayContent = getDisplayContent()
     if (!displayContent.trim()) return
     const finalType = getFinalMessageType(msgType)
-    const finalContent = buildFinalContent(finalType, displayContent, quickReplyEnabled ? quickReplyItems : [])
+    const finalContent = buildFinalContent(finalType, displayContent, [])
     await onSend(finalType, finalContent)
     setContent('')
     setCarouselCards([{ title: '', text: '', imageUrl: '', buttons: [] }])
-    setQuickReplyEnabled(false)
-    setQuickReplyItems([])
     setSelectedFormId('')
     setMsgType('text')
     setExpanded(false)
@@ -308,12 +283,16 @@ function ChatComposer({ onSend, sending }: { onSend: (msgType: string, content: 
   if (!expanded && msgType === 'text') {
     return (
       <div className="px-4 py-3 border-t border-gray-200">
-        <div className="flex items-center gap-2 mb-1.5">
-          <button onClick={() => setExpanded(true)} className="text-[10px] text-blue-600 hover:text-blue-700 whitespace-nowrap">種別切替</button>
-          <button onClick={() => setShowTemplateModal(true)} className="text-[10px] text-purple-600 hover:text-purple-700 whitespace-nowrap">テンプレート</button>
-          <label className="flex items-center gap-1 text-[10px] text-gray-500"><input type="checkbox" checked={quickReplyEnabled} onChange={e => setQuickReplyEnabled(e.target.checked)} className="w-3 h-3" />QR</label>
+        <div className="flex items-center gap-2 mb-2">
+          <button onClick={() => setExpanded(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+            種別切替
+          </button>
+          <button onClick={() => setShowTemplateModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+            テンプレート
+          </button>
         </div>
-        {quickReplyEnabled && <div className="mb-2"><QuickReplyEditor items={quickReplyItems} onChange={setQuickReplyItems} /></div>}
         <div className="flex items-center gap-2">
           <input type="text" value={content} onChange={e => setContent(e.target.value)} onKeyDown={handleKeyDown} placeholder="メッセージを入力..." className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-green-500" />
           <button onClick={handleSend} disabled={sending || !content.trim()} className="px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50" style={{ backgroundColor: '#06C755' }}>{sending ? '...' : '送信'}</button>
@@ -331,8 +310,11 @@ function ChatComposer({ onSend, sending }: { onSend: (msgType: string, content: 
         {MESSAGE_TYPES.map(t => (
           <button key={t.value} onClick={() => setMsgType(t.value)} className={`px-2 py-1 text-[10px] font-medium rounded-md transition-colors ${msgType === t.value ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{t.label}</button>
         ))}
-        <button onClick={() => setShowTemplateModal(true)} className="px-2 py-1 text-[10px] font-medium text-purple-600 bg-purple-50 rounded-md hover:bg-purple-100">テンプレート</button>
-        <button onClick={() => { setExpanded(false); setMsgType('text') }} className="ml-auto text-[10px] text-gray-400 hover:text-gray-600">折りたたむ</button>
+        <button onClick={() => setShowTemplateModal(true)} className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+          テンプレート
+        </button>
+        <button onClick={() => { setExpanded(false); setMsgType('text') }} className="ml-auto text-xs text-gray-400 hover:text-gray-600 transition-colors">折りたたむ</button>
       </div>
 
       {/* Content area */}
@@ -380,12 +362,6 @@ function ChatComposer({ onSend, sending }: { onSend: (msgType: string, content: 
           {content && (() => { try { JSON.parse(content); return <FlexPreviewComponent content={content} maxWidth={280} /> } catch { return null } })()}
         </div>
       )}
-
-      {/* Quick Reply */}
-      <div className="flex items-center gap-2">
-        <label className="flex items-center gap-1 text-[10px] text-gray-500"><input type="checkbox" checked={quickReplyEnabled} onChange={e => setQuickReplyEnabled(e.target.checked)} className="w-3 h-3" />クイックリプライ</label>
-      </div>
-      {quickReplyEnabled && <QuickReplyEditor items={quickReplyItems} onChange={setQuickReplyItems} />}
 
       {/* Send */}
       <div className="flex justify-end">
