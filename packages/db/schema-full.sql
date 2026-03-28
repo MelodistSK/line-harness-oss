@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS scenario_steps (
   scenario_id       TEXT NOT NULL REFERENCES scenarios (id) ON DELETE CASCADE,
   step_order        INTEGER NOT NULL,
   delay_minutes     INTEGER NOT NULL DEFAULT 0,
-  message_type      TEXT NOT NULL CHECK (message_type IN ('text', 'image', 'flex')),
+  message_type      TEXT NOT NULL CHECK (message_type IN ('text', 'image', 'flex', 'carousel', 'video', 'rich_menu')),
   message_content   TEXT NOT NULL,
   condition_type    TEXT,
   condition_value   TEXT,
@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS broadcasts (
   id              TEXT PRIMARY KEY,
   title           TEXT NOT NULL,
   line_account_id TEXT,
-  message_type    TEXT NOT NULL CHECK (message_type IN ('text', 'image', 'flex')),
+  message_type    TEXT NOT NULL CHECK (message_type IN ('text', 'image', 'flex', 'carousel', 'video')),
   message_content TEXT NOT NULL,
   target_type     TEXT NOT NULL CHECK (target_type IN ('all', 'tag')) DEFAULT 'all',
   target_tag_id   TEXT REFERENCES tags (id) ON DELETE SET NULL,
@@ -420,7 +420,7 @@ CREATE TABLE IF NOT EXISTS reminder_steps (
   id              TEXT PRIMARY KEY,
   reminder_id     TEXT NOT NULL REFERENCES reminders (id) ON DELETE CASCADE,
   offset_minutes  INTEGER NOT NULL,
-  message_type    TEXT NOT NULL CHECK (message_type IN ('text', 'image', 'flex')),
+  message_type    TEXT NOT NULL CHECK (message_type IN ('text', 'image', 'flex', 'carousel', 'video')),
   message_content TEXT NOT NULL,
   created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
 );
