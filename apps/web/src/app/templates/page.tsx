@@ -64,6 +64,7 @@ const MESSAGE_TYPES = [
   { value: 'image', label: '画像' },
   { value: 'flex', label: 'Flex' },
   { value: 'form', label: 'フォーム' },
+  { value: 'booking', label: '予約' },
   { value: 'carousel', label: 'カルーセル' },
   { value: 'video', label: '動画' },
 ]
@@ -90,6 +91,20 @@ function generateFormFlex(form: FormData): string {
   }, null, 2)
 }
 
+function generateBookingFlex(): string {
+  const liffUrl = `https://liff.line.me/${LIFF_ID || '2009615537-8qwrEnEt'}?page=booking`
+  return JSON.stringify({
+    type: 'bubble',
+    body: { type: 'box', layout: 'vertical', contents: [
+      { type: 'text', text: 'ご予約はこちら', weight: 'bold', size: 'lg', wrap: true },
+      { type: 'text', text: 'ご都合の良い日時をお選びください', color: '#666666', size: 'sm', wrap: true, margin: 'md' },
+    ] },
+    footer: { type: 'box', layout: 'vertical', contents: [
+      { type: 'button', action: { type: 'uri', label: '予約する', uri: liffUrl }, style: 'primary', color: '#06C755' },
+    ] },
+  }, null, 2)
+}
+
 function applyVariablePreview(content: string): string {
   return content
     .replace(/\{\{name\}\}/g, '田中太郎')
@@ -102,7 +117,7 @@ function applyVariablePreview(content: string): string {
 
 function buildFinalContent(messageType: string, content: string, qrItems: QuickReplyItem[]): string {
   const hasQR = qrItems.length > 0
-  const finalType = messageType === 'form' ? 'flex' : messageType
+  const finalType = messageType === 'form' || messageType === 'booking' ? 'flex' : messageType
   if (finalType === 'text') {
     return hasQR ? JSON.stringify({ _text: content, _quickReply: qrItems }) : content
   }
@@ -236,6 +251,12 @@ export default function TemplatesPage() {
       if (found) setForm(prev => ({ ...prev, messageContent: generateFormFlex(found) }))
     }
   }, [selectedFormId, form.messageType, formsList])
+
+  useEffect(() => {
+    if (form.messageType === 'booking') {
+      setForm(prev => ({ ...prev, messageContent: generateBookingFlex() }))
+    }
+  }, [form.messageType])
 
   const categories = Array.from(new Set(templates.map(t => t.category).filter(Boolean)))
 
@@ -418,6 +439,13 @@ export default function TemplatesPage() {
                 </div>
               )}
 
+              {form.messageType === 'booking' && (
+                <div className="mb-2">
+                  {!LIFF_ID && <p className="text-xs text-yellow-600 mb-2">NEXT_PUBLIC_LIFF_ID が未設定です</p>}
+                  <p className="text-xs text-gray-500">予約ページへのLIFFリンク付きFlexメッセージが自動生成されます</p>
+                </div>
+              )}
+
               {form.messageType === 'carousel' && (
                 <CarouselBuilder cards={carouselCards} onChange={setCarouselCards} />
               )}
@@ -457,7 +485,7 @@ export default function TemplatesPage() {
               {form.messageType !== 'carousel' && form.messageType !== 'image' && form.messageType !== 'video' && (
                 <textarea
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-y"
-                  rows={form.messageType === 'flex' || form.messageType === 'form' ? 8 : 4}
+                  rows={form.messageType === 'flex' || form.messageType === 'form' || form.messageType === 'booking' ? 8 : 4}
                   placeholder={form.messageType === 'text' ? 'メッセージ内容を入力してください' : '{"type":"bubble","body":{...}}'}
                   value={form.messageContent}
                   onChange={e => setForm({ ...form, messageContent: e.target.value })}
@@ -471,7 +499,7 @@ export default function TemplatesPage() {
                 </div>
               )}
 
-              {(form.messageType === 'flex' || form.messageType === 'form') && form.messageContent && (() => {
+              {(form.messageType === 'flex' || form.messageType === 'form' || form.messageType === 'booking') && form.messageContent && (() => {
                 try { JSON.parse(applyVariablePreview(form.messageContent)); return (
                   <div className="mt-3"><p className="text-xs font-medium text-gray-500 mb-2">プレビュー</p><FlexPreviewComponent content={applyVariablePreview(form.messageContent)} maxWidth={300} /></div>
                 ) } catch { return <p className="text-xs text-red-500 mt-1">JSON パースエラー</p> }

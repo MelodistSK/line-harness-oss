@@ -81,6 +81,24 @@ function generateFormFlex(form: FormData): string {
   return JSON.stringify(flex, null, 2)
 }
 
+function generateBookingFlex(): string {
+  const liffUrl = `https://liff.line.me/${LIFF_ID}?page=booking`
+  return JSON.stringify({
+    type: 'bubble',
+    body: {
+      type: 'box', layout: 'vertical', contents: [
+        { type: 'text', text: 'ご予約はこちら', weight: 'bold', size: 'lg', wrap: true },
+        { type: 'text', text: 'ご都合の良い日時をお選びください', color: '#666666', size: 'sm', wrap: true, margin: 'md' },
+      ],
+    },
+    footer: {
+      type: 'box', layout: 'vertical', contents: [
+        { type: 'button', action: { type: 'uri', label: '予約する', uri: liffUrl }, style: 'primary', color: '#06C755' },
+      ],
+    },
+  }, null, 2)
+}
+
 /** Apply sample variable substitution for preview only */
 function applyVariablePreview(content: string): string {
   return content
@@ -112,6 +130,7 @@ function buildFinalContent(messageType: string, content: string, qrItems: QuickR
 /** Get the actual saved messageType (form → flex) */
 function getFinalMessageType(uiType: string): string {
   if (uiType === 'form') return 'flex'
+  if (uiType === 'booking') return 'flex'
   return uiType
 }
 
@@ -275,6 +294,7 @@ const MESSAGE_TYPES = [
   { value: 'image', label: '画像' },
   { value: 'flex', label: 'Flex' },
   { value: 'form', label: 'フォーム' },
+  { value: 'booking', label: '予約' },
   { value: 'carousel', label: 'カルーセル' },
   { value: 'video', label: '動画' },
 ]
@@ -351,6 +371,13 @@ export default function BroadcastForm({ tags, onSuccess, onCancel, editBroadcast
       }).catch(() => {})
     }
   }, [showTestSend])
+
+  // When booking type is selected, auto-generate Flex JSON
+  useEffect(() => {
+    if (form.messageType === 'booking') {
+      setForm(prev => ({ ...prev, messageContent: generateBookingFlex() }))
+    }
+  }, [form.messageType])
 
   // When a form is selected, auto-generate Flex JSON
   useEffect(() => {
@@ -494,6 +521,18 @@ export default function BroadcastForm({ tags, onSuccess, onCancel, editBroadcast
             </button>
           </div>
 
+          {/* ── Booking ── */}
+          {form.messageType === 'booking' && (
+            <div className="space-y-2 mb-2">
+              {!LIFF_ID && (
+                <p className="text-xs text-yellow-600 bg-yellow-50 px-3 py-2 rounded border border-yellow-200">
+                  NEXT_PUBLIC_LIFF_ID が未設定です
+                </p>
+              )}
+              {form.messageContent && (() => { try { JSON.parse(form.messageContent); return <FlexPreviewComponent content={form.messageContent} maxWidth={280} /> } catch { return null } })()}
+            </div>
+          )}
+
           {/* ── Form picker ── */}
           {form.messageType === 'form' && (
             <div className="space-y-2 mb-2">
@@ -558,7 +597,7 @@ export default function BroadcastForm({ tags, onSuccess, onCancel, editBroadcast
           })()}
 
           {/* ── Textarea for text / flex / form (raw JSON) ── */}
-          {form.messageType !== 'carousel' && form.messageType !== 'image' && form.messageType !== 'video' && (
+          {form.messageType !== 'carousel' && form.messageType !== 'image' && form.messageType !== 'video' && form.messageType !== 'booking' && (
             <textarea
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-y"
               rows={form.messageType === 'flex' || form.messageType === 'form' ? 8 : 4}
@@ -581,7 +620,7 @@ export default function BroadcastForm({ tags, onSuccess, onCancel, editBroadcast
           )}
 
           {/* ── Flex/Form/Carousel preview ── */}
-          {(form.messageType === 'flex' || form.messageType === 'form') && (
+          {(form.messageType === 'flex' || form.messageType === 'form' || form.messageType === 'booking') && (
             <FlexPreviewSection content={form.messageContent} />
           )}
           {form.messageType === 'carousel' && (() => {

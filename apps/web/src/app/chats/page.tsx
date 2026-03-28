@@ -75,6 +75,7 @@ const MESSAGE_TYPES = [
   { value: 'carousel', label: 'カルーセル' },
   { value: 'video', label: '動画' },
   { value: 'form', label: 'フォーム' },
+  { value: 'booking', label: '予約' },
 ]
 
 function formatDatetime(iso: string | null): string {
@@ -98,6 +99,24 @@ function generateFormFlex(form: FormData): string {
   }, null, 2)
 }
 
+function generateBookingFlex(): string {
+  const liffUrl = `https://liff.line.me/${LIFF_ID}?page=booking`
+  return JSON.stringify({
+    type: 'bubble',
+    body: {
+      type: 'box', layout: 'vertical', contents: [
+        { type: 'text', text: 'ご予約はこちら', weight: 'bold', size: 'lg', wrap: true },
+        { type: 'text', text: 'ご都合の良い日時をお選びください', color: '#666666', size: 'sm', wrap: true, margin: 'md' },
+      ],
+    },
+    footer: {
+      type: 'box', layout: 'vertical', contents: [
+        { type: 'button', action: { type: 'uri', label: '予約する', uri: liffUrl }, style: 'primary', color: '#06C755' },
+      ],
+    },
+  }, null, 2)
+}
+
 function buildFinalContent(messageType: string, content: string, qrItems: QuickReplyItem[]): string {
   const hasQR = qrItems.length > 0
   if (messageType === 'text') {
@@ -111,7 +130,7 @@ function buildFinalContent(messageType: string, content: string, qrItems: QuickR
 }
 
 function getFinalMessageType(uiType: string): string {
-  return uiType === 'form' ? 'flex' : uiType
+  return uiType === 'form' ? 'flex' : uiType === 'booking' ? 'flex' : uiType
 }
 
 const ccPrompts = [
@@ -237,6 +256,9 @@ function ChatComposer({ onSend, sending }: { onSend: (msgType: string, content: 
   useEffect(() => { api.forms.list().then(r => { if (r.success) setFormsList(r.data) }).catch(() => {}) }, [])
   useEffect(() => { if (showTemplateModal) api.templates.list().then(r => { if (r.success) setTemplatesList(r.data) }).catch(() => {}) }, [showTemplateModal])
   useEffect(() => {
+    if (msgType === 'booking') setContent(generateBookingFlex())
+  }, [msgType])
+  useEffect(() => {
     if (msgType === 'form' && selectedFormId) {
       const found = formsList.find(f => f.id === selectedFormId)
       if (found) setContent(generateFormFlex(found))
@@ -317,6 +339,13 @@ function ChatComposer({ onSend, sending }: { onSend: (msgType: string, content: 
       )}
 
       {msgType === 'carousel' && <CarouselBuilder cards={carouselCards} onChange={setCarouselCards} />}
+
+      {msgType === 'booking' && (
+        <div className="space-y-2">
+          {!LIFF_ID && <p className="text-xs text-yellow-600 bg-yellow-50 px-3 py-2 rounded border border-yellow-200">NEXT_PUBLIC_LIFF_ID が未設定です</p>}
+          {content && (() => { try { JSON.parse(content); return <FlexPreviewComponent content={content} maxWidth={280} /> } catch { return null } })()}
+        </div>
+      )}
 
       {msgType === 'form' && (
         <div className="space-y-2">

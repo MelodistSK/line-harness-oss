@@ -78,6 +78,7 @@ const MESSAGE_TYPES = [
   { value: 'image', label: '画像' },
   { value: 'flex', label: 'Flex' },
   { value: 'form', label: 'フォーム' },
+  { value: 'booking', label: '予約' },
   { value: 'carousel', label: 'カルーセル' },
   { value: 'video', label: '動画' },
   { value: 'rich_menu', label: 'リッチメニュー切替' },
@@ -131,6 +132,20 @@ function generateFormFlex(form: FormData): string {
       ...(form.description ? [{ type: 'text', text: form.description, color: '#666666', size: 'sm', wrap: true, margin: 'md' }] : []),
     ]},
     footer: { type: 'box', layout: 'vertical', contents: [{ type: 'button', action: { type: 'uri', label: 'フォームに回答する', uri: liffUrl }, style: 'primary', color: '#06C755' }] },
+  }, null, 2)
+}
+
+function generateBookingFlex(): string {
+  const liffUrl = `https://liff.line.me/${LIFF_ID || '2009615537-8qwrEnEt'}?page=booking`
+  return JSON.stringify({
+    type: 'bubble',
+    body: { type: 'box', layout: 'vertical', contents: [
+      { type: 'text', text: 'ご予約はこちら', weight: 'bold', size: 'lg', wrap: true },
+      { type: 'text', text: 'ご都合の良い日時をお選びください', color: '#666666', size: 'sm', wrap: true, margin: 'md' },
+    ] },
+    footer: { type: 'box', layout: 'vertical', contents: [
+      { type: 'button', action: { type: 'uri', label: '予約する', uri: liffUrl }, style: 'primary', color: '#06C755' },
+    ] },
   }, null, 2)
 }
 
@@ -342,6 +357,12 @@ export default function ScenarioDetailClient({ scenarioId }: { scenarioId: strin
     }
   }, [selectedFormId, stepForm.messageType, formsList])
 
+  useEffect(() => {
+    if (stepForm.messageType === 'booking') {
+      setStepForm(prev => ({ ...prev, messageContent: generateBookingFlex() }))
+    }
+  }, [stepForm.messageType])
+
   const getDisplayContent = () => {
     if (stepForm.messageType === 'carousel') return JSON.stringify({ cards: carouselCards }, null, 2)
     if (stepForm.messageType === 'rich_menu') return JSON.stringify({ richMenuId: stepForm.richMenuId, action: stepForm.richMenuAction })
@@ -424,7 +445,7 @@ export default function ScenarioDetailClient({ scenarioId }: { scenarioId: strin
     setStepSaving(true)
     setStepError('')
 
-    const finalType = stepForm.messageType === 'form' ? 'flex' : stepForm.messageType
+    const finalType = stepForm.messageType === 'form' || stepForm.messageType === 'booking' ? 'flex' : stepForm.messageType
     const finalContent = stepForm.messageType === 'rich_menu'
       ? content
       : buildFinalContent(finalType, content, quickReplyEnabled ? quickReplyItems : [])
@@ -477,7 +498,7 @@ export default function ScenarioDetailClient({ scenarioId }: { scenarioId: strin
     if (!testFriendId) return
     const content = getDisplayContent()
     if (!content.trim()) { setTestSendResult('メッセージ内容が空です'); return }
-    const finalType = stepForm.messageType === 'form' ? 'flex' : stepForm.messageType
+    const finalType = stepForm.messageType === 'form' || stepForm.messageType === 'booking' ? 'flex' : stepForm.messageType
     const finalContent = buildFinalContent(finalType, content, quickReplyEnabled ? quickReplyItems : [])
     setTestSending(true)
     setTestSendResult('')
@@ -678,6 +699,13 @@ export default function ScenarioDetailClient({ scenarioId }: { scenarioId: strin
                   </div>
                 )}
 
+                {stepForm.messageType === 'booking' && (
+                  <div className="mb-2">
+                    {!LIFF_ID && <p className="text-xs text-yellow-600 mb-1">NEXT_PUBLIC_LIFF_ID が未設定です</p>}
+                    <p className="text-xs text-gray-500">予約ページへのLIFFリンク付きFlexメッセージが自動生成されます</p>
+                  </div>
+                )}
+
                 {/* Carousel */}
                 {stepForm.messageType === 'carousel' && <CarouselBuilder cards={carouselCards} onChange={setCarouselCards} />}
 
@@ -719,7 +747,7 @@ export default function ScenarioDetailClient({ scenarioId }: { scenarioId: strin
                 {stepForm.messageType !== 'carousel' && stepForm.messageType !== 'image' && stepForm.messageType !== 'video' && stepForm.messageType !== 'rich_menu' && (
                   <textarea
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-y"
-                    rows={stepForm.messageType === 'flex' || stepForm.messageType === 'form' ? 8 : 4}
+                    rows={stepForm.messageType === 'flex' || stepForm.messageType === 'form' || stepForm.messageType === 'booking' ? 8 : 4}
                     placeholder={stepForm.messageType === 'text' ? 'メッセージ内容を入力...\n{{name}}で名前、{{uid}}でUID挿入可' : '{"type":"bubble","body":{...}}'}
                     value={stepForm.messageContent}
                     onChange={e => setStepForm({ ...stepForm, messageContent: e.target.value })}
@@ -735,7 +763,7 @@ export default function ScenarioDetailClient({ scenarioId }: { scenarioId: strin
                 )}
 
                 {/* Flex preview */}
-                {(stepForm.messageType === 'flex' || stepForm.messageType === 'form') && stepForm.messageContent && (() => {
+                {(stepForm.messageType === 'flex' || stepForm.messageType === 'form' || stepForm.messageType === 'booking') && stepForm.messageContent && (() => {
                   const preview = applyVariablePreview(stepForm.messageContent)
                   try { JSON.parse(preview); return <div className="mt-3"><p className="text-xs font-medium text-gray-500 mb-2">プレビュー</p><FlexPreviewComponent content={preview} maxWidth={300} /></div> }
                   catch { return <p className="text-xs text-red-500 mt-1">JSON パースエラー</p> }
