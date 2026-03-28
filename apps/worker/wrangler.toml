@@ -11,8 +11,12 @@ account_id = "f00cff121653deb09e6d20bbfca5349a"
 WORKER_URL = "https://line-harness-mamayoro.s-kamiya.workers.dev"
 
 [[kv_namespaces]]
-binding = "ASSETS"
+binding = "ASSETS_KV"
 id = "86808b1b6a0a4d45be74d2e1df497f88"
+
+[[r2_buckets]]
+binding = "ASSETS"
+bucket_name = "line-harness-assets"
 
 [[d1_databases]]
 binding = "DB"

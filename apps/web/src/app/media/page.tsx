@@ -12,6 +12,7 @@ interface AssetItem {
   size?: number
   originalName?: string
   uploadedAt?: string
+  storage?: 'r2' | 'kv'
 }
 
 function formatSize(bytes?: number): string {
@@ -35,6 +36,7 @@ export default function MediaPage() {
   const [filter, setFilter] = useState<'all' | 'image' | 'video'>('all')
   const [search, setSearch] = useState('')
   const [copiedId, setCopiedId] = useState('')
+  const [migrating, setMigrating] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -87,6 +89,45 @@ export default function MediaPage() {
 
       {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}<button onClick={() => setError('')} className="ml-2 text-red-400">x</button></div>}
       {success && <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">{success}<button onClick={() => setSuccess('')} className="ml-2 text-green-400">x</button></div>}
+
+      {/* Storage stats */}
+      {(() => {
+        const totalSize = items.reduce((sum, i) => sum + (i.size ?? 0), 0)
+        const r2Count = items.filter(i => i.storage === 'r2').length
+        const kvCount = items.filter(i => i.storage === 'kv').length
+        const usedGB = (totalSize / (1024 * 1024 * 1024)).toFixed(2)
+        return (
+          <div className="flex items-center gap-4 mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" /></svg>
+              <span className="text-sm font-medium text-gray-700">R2: {usedGB} GB / 10 GB</span>
+            </div>
+            <div className="w-32 h-2 bg-gray-200 rounded-full overflow-hidden">
+              <div className="h-full bg-blue-500 rounded-full" style={{ width: `${Math.min(100, (totalSize / (10 * 1024 * 1024 * 1024)) * 100)}%` }} />
+            </div>
+            <span className="text-xs text-gray-400">{items.length} ファイル ({r2Count} R2{kvCount > 0 ? ` / ${kvCount} KV` : ''})</span>
+            <span className="text-xs text-gray-400">上限 100MB/ファイル</span>
+            {kvCount > 0 && (
+              <button
+                onClick={async () => {
+                  if (!confirm(`KVの${kvCount}ファイルをR2に移行しますか？`)) return
+                  setMigrating(true)
+                  try {
+                    const res = await fetchApi<{ success: boolean; data: { migrated: number; skipped: number; failed: number } }>('/api/assets/migrate-to-r2', { method: 'POST' })
+                    if (res.success) setSuccess(`R2移行完了: ${res.data.migrated}件移行, ${res.data.skipped}件スキップ, ${res.data.failed}件失敗`)
+                    load()
+                  } catch { setError('R2移行に失敗しました') }
+                  finally { setMigrating(false) }
+                }}
+                disabled={migrating}
+                className="ml-auto px-3 py-1 text-xs font-medium text-orange-700 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100 disabled:opacity-50 transition-colors"
+              >
+                {migrating ? '移行中...' : `KV→R2 移行 (${kvCount}件)`}
+              </button>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Filters */}
       <div className="flex items-center gap-3 mb-6">

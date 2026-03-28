@@ -39,7 +39,8 @@ import { adPlatforms } from './routes/ad-platforms.js';
 export type Env = {
   Bindings: {
     DB: D1Database;
-    ASSETS: KVNamespace;
+    ASSETS: R2Bucket;
+    ASSETS_KV: KVNamespace;
     LINE_CHANNEL_SECRET: string;
     LINE_CHANNEL_ACCESS_TOKEN: string;
     API_KEY: string;
@@ -138,7 +139,7 @@ h1{font-size:28px;font-weight:800;margin-bottom:8px}
 
 // LIFF app — serve from KV
 app.get('/liff', async (c) => {
-  const html = await c.env.ASSETS.get('liff-index.html', 'text');
+  const html = await c.env.ASSETS_KV.get('liff-index.html', 'text');
   if (!html) return c.json({ success: false, error: 'LIFF app not found' }, 404);
   return new Response(html, {
     headers: { 'Content-Type': 'text/html; charset=utf-8' },

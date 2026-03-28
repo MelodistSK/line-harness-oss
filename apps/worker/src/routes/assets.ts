@@ -15,7 +15,7 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 const ALLOWED_EXTENSIONS = new Set(Object.keys(MIME_TYPES));
-const MAX_SIZE = 25 * 1024 * 1024; // 25 MB (KV value limit)
+const MAX_SIZE = 100 * 1024 * 1024; // 100 MB (R2 supports up to 5 GB per object)
 
 // POST /api/assets/upload — upload image or video (auth required)
 assets.post('/api/assets/upload', async (c) => {
@@ -72,9 +72,8 @@ assets.post('/api/assets/upload', async (c) => {
 
     const now = new Date().toISOString();
     await c.env.ASSETS.put(filename, data, {
-      metadata: {
-        contentType: mime,
-        size: data.byteLength,
+      httpMetadata: { contentType: mime },
+      customMetadata: {
         originalName,
         uploadedAt: now,
       },
@@ -98,24 +97,36 @@ assets.post('/api/assets/upload', async (c) => {
 assets.get('/assets/:filename', async (c) => {
   try {
     const filename = c.req.param('filename');
-    const { value, metadata } = await c.env.ASSETS.getWithMetadata<{ contentType: string }>(
+
+    // Try R2 first, then fall back to KV (for migration period)
+    const obj = await c.env.ASSETS.get(filename);
+    if (obj) {
+      const headers = new Headers();
+      headers.set('Content-Type', obj.httpMetadata?.contentType ?? 'application/octet-stream');
+      headers.set('Content-Length', String(obj.size));
+      headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+      headers.set('ETag', obj.httpEtag);
+      return new Response(obj.body, { headers });
+    }
+
+    // Fallback: check KV (legacy files not yet migrated)
+    const { value, metadata } = await c.env.ASSETS_KV.getWithMetadata<{ contentType: string }>(
       filename,
       'arrayBuffer',
     );
-
-    if (!value) {
-      return c.json({ success: false, error: 'Not found' }, 404);
+    if (value) {
+      const mime = metadata?.contentType ?? 'application/octet-stream';
+      const buf = value as ArrayBuffer;
+      return new Response(buf, {
+        headers: {
+          'Content-Type': mime,
+          'Content-Length': String(buf.byteLength),
+          'Cache-Control': 'public, max-age=31536000, immutable',
+        },
+      });
     }
 
-    const mime = metadata?.contentType ?? 'application/octet-stream';
-    const buf = value as ArrayBuffer;
-    return new Response(buf, {
-      headers: {
-        'Content-Type': mime,
-        'Content-Length': String(buf.byteLength),
-        'Cache-Control': 'public, max-age=31536000, immutable',
-      },
-    });
+    return c.json({ success: false, error: 'Not found' }, 404);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('GET /assets/:filename error:', message);
@@ -129,26 +140,50 @@ assets.get('/api/assets', async (c) => {
     const workerUrl = c.env.WORKER_URL || new URL(c.req.url).origin;
     const filterType = c.req.query('type'); // 'image' | 'video' | undefined
 
-    // Paginate through all KV keys
-    let cursor: string | undefined;
     const allItems: Record<string, unknown>[] = [];
+
+    // List R2 objects
+    let r2Cursor: string | undefined;
     do {
-      const list = await c.env.ASSETS.list({ cursor, limit: 1000 });
+      const listed = await c.env.ASSETS.list({ cursor: r2Cursor, limit: 1000 });
+      for (const obj of listed.objects) {
+        const ct = obj.httpMetadata?.contentType ?? '';
+        if (filterType === 'image' && !ct.startsWith('image/')) continue;
+        if (filterType === 'video' && !ct.startsWith('video/')) continue;
+        allItems.push({
+          filename: obj.key,
+          url: `${workerUrl}/assets/${obj.key}`,
+          contentType: ct,
+          size: obj.size,
+          originalName: obj.customMetadata?.originalName,
+          uploadedAt: obj.customMetadata?.uploadedAt ?? obj.uploaded.toISOString(),
+          storage: 'r2',
+        });
+      }
+      r2Cursor = listed.truncated ? listed.cursor : undefined;
+    } while (r2Cursor);
+
+    // Also list KV assets (legacy, not yet migrated)
+    let kvCursor: string | undefined;
+    do {
+      const list = await c.env.ASSETS_KV.list({ cursor: kvCursor, limit: 1000 });
       for (const key of list.keys) {
+        // Skip if already in R2
+        if (allItems.some(i => i.filename === key.name)) continue;
         const meta = (key.metadata ?? {}) as Record<string, unknown>;
         const ct = (meta.contentType as string) || '';
         if (filterType === 'image' && !ct.startsWith('image/')) continue;
         if (filterType === 'video' && !ct.startsWith('video/')) continue;
-        // Skip internal LIFF files
         if (key.name === 'liff-index.html' || key.name === 'liff.js') continue;
         allItems.push({
           filename: key.name,
           url: `${workerUrl}/assets/${key.name}`,
           ...meta,
+          storage: 'kv',
         });
       }
-      cursor = list.list_complete ? undefined : list.cursor;
-    } while (cursor);
+      kvCursor = list.list_complete ? undefined : list.cursor;
+    } while (kvCursor);
 
     return c.json({ success: true, data: allItems });
   } catch (err) {
@@ -162,12 +197,63 @@ assets.get('/api/assets', async (c) => {
 assets.delete('/api/assets/:filename', async (c) => {
   try {
     const filename = c.req.param('filename');
-    await c.env.ASSETS.delete(filename);
+    // Delete from both R2 and KV to handle migration period
+    await Promise.allSettled([
+      c.env.ASSETS.delete(filename),
+      c.env.ASSETS_KV.delete(filename),
+    ]);
     return c.json({ success: true, data: null });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('DELETE /api/assets/:filename error:', message);
     return c.json({ success: false, error: `Failed to delete asset: ${message}` }, 500);
+  }
+});
+
+// POST /api/assets/migrate-to-r2 — migrate all KV assets to R2 (auth required)
+assets.post('/api/assets/migrate-to-r2', async (c) => {
+  try {
+    let migrated = 0;
+    let skipped = 0;
+    let failed = 0;
+    let kvCursor: string | undefined;
+
+    do {
+      const list = await c.env.ASSETS_KV.list({ cursor: kvCursor, limit: 100 });
+      for (const key of list.keys) {
+        if (key.name === 'liff-index.html' || key.name === 'liff.js') { skipped++; continue; }
+        const meta = (key.metadata ?? {}) as Record<string, unknown>;
+
+        // Check if already in R2
+        const existing = await c.env.ASSETS.head(key.name);
+        if (existing) { skipped++; continue; }
+
+        try {
+          const value = await c.env.ASSETS_KV.get(key.name, 'arrayBuffer');
+          if (!value) { skipped++; continue; }
+
+          const ct = (meta.contentType as string) || 'application/octet-stream';
+          await c.env.ASSETS.put(key.name, value, {
+            httpMetadata: { contentType: ct },
+            customMetadata: {
+              originalName: (meta.originalName as string) || key.name,
+              uploadedAt: (meta.uploadedAt as string) || new Date().toISOString(),
+            },
+          });
+          migrated++;
+        } catch (err) {
+          console.error(`Failed to migrate ${key.name}:`, err);
+          failed++;
+        }
+      }
+      kvCursor = list.list_complete ? undefined : list.cursor;
+    } while (kvCursor);
+
+    return c.json({ success: true, data: { migrated, skipped, failed } });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('POST /api/assets/migrate-to-r2 error:', message);
+    return c.json({ success: false, error: `Migration failed: ${message}` }, 500);
   }
 });
 
