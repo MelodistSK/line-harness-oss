@@ -5,8 +5,8 @@ import Link from 'next/link'
 import type { Scenario, ScenarioStep, ScenarioTriggerType, MessageType } from '@line-crm/shared'
 import { api } from '@/lib/api'
 import Header from '@/components/layout/header'
-import ImageUploader from '@/components/image-uploader'
 import FlexPreviewComponent from '@/components/flex-preview'
+import MediaUrlInput from '@/components/media-url-input'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -212,10 +212,7 @@ function CarouselBuilder({ cards, onChange }: { cards: CarouselCard[]; onChange:
           </div>
           <input className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-green-500" placeholder="タイトル" value={card.title} onChange={e => updateCard(i, { title: e.target.value })} />
           <input className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-green-500" placeholder="説明文" value={card.text} onChange={e => updateCard(i, { text: e.target.value })} />
-          <div className="flex gap-2 items-center">
-            <input className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-green-500" placeholder="画像URL (省略可)" value={card.imageUrl} onChange={e => updateCard(i, { imageUrl: e.target.value })} />
-            <ImageUploader label="Upload" onUploaded={url => updateCard(i, { imageUrl: url })} />
-          </div>
+          <MediaUrlInput accept="image" placeholder="画像URL (省略可)" value={card.imageUrl} onChange={url => updateCard(i, { imageUrl: url })} />
           <div className="space-y-1">
             {card.buttons.map((btn, bi) => (
               <div key={bi} className="flex gap-1 items-center">
@@ -689,14 +686,11 @@ export default function ScenarioDetailClient({ scenarioId }: { scenarioId: strin
                   let parsed: { originalContentUrl?: string; previewImageUrl?: string } = {}
                   try { parsed = JSON.parse(stepForm.messageContent) } catch {}
                   return (
-                    <div className="mb-2">
-                      <div className="flex gap-2 items-end">
-                        <div className="flex-1">
-                          <label className="block text-xs text-gray-500 mb-1">画像URL</label>
-                          <input type="url" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="https://example.com/image.png" value={parsed.originalContentUrl ?? ''} onChange={e => { const url = e.target.value; setStepForm({ ...stepForm, messageContent: JSON.stringify({ originalContentUrl: url, previewImageUrl: url }) }) }} />
-                        </div>
-                        <ImageUploader label="Upload" onUploaded={url => setStepForm({ ...stepForm, messageContent: JSON.stringify({ originalContentUrl: url, previewImageUrl: url }) })} />
-                      </div>
+                    <div className="mb-2 space-y-2">
+                      <MediaUrlInput accept="image" label="画像URL" placeholder="https://example.com/image.png"
+                        value={parsed.originalContentUrl ?? ''}
+                        onChange={url => setStepForm({ ...stepForm, messageContent: JSON.stringify({ originalContentUrl: url, previewImageUrl: url }) })}
+                      />
                       {(() => { try { const url = JSON.parse(stepForm.messageContent).originalContentUrl; if (url) return <img src={url} alt="preview" className="mt-2 max-w-[200px] rounded-lg border border-gray-200" /> } catch {} return null })()}
                     </div>
                   )
@@ -708,14 +702,14 @@ export default function ScenarioDetailClient({ scenarioId }: { scenarioId: strin
                   try { parsed = JSON.parse(stepForm.messageContent) } catch {}
                   return (
                     <div className="space-y-2 mb-2">
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">動画URL (mp4)</label>
-                        <input type="url" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="https://example.com/video.mp4" value={parsed.originalContentUrl ?? ''} onChange={e => setStepForm({ ...stepForm, messageContent: JSON.stringify({ originalContentUrl: e.target.value, previewImageUrl: parsed.previewImageUrl ?? '' }) })} />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">プレビュー画像URL</label>
-                        <input type="url" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="https://example.com/preview.jpg" value={parsed.previewImageUrl ?? ''} onChange={e => setStepForm({ ...stepForm, messageContent: JSON.stringify({ originalContentUrl: parsed.originalContentUrl ?? '', previewImageUrl: e.target.value }) })} />
-                      </div>
+                      <MediaUrlInput accept="video" label="動画URL (mp4)" placeholder="https://example.com/video.mp4"
+                        value={parsed.originalContentUrl ?? ''}
+                        onChange={url => setStepForm({ ...stepForm, messageContent: JSON.stringify({ originalContentUrl: url, previewImageUrl: parsed.previewImageUrl ?? '' }) })}
+                      />
+                      <MediaUrlInput accept="image" label="プレビュー画像URL" placeholder="https://example.com/preview.jpg"
+                        value={parsed.previewImageUrl ?? ''}
+                        onChange={url => setStepForm({ ...stepForm, messageContent: JSON.stringify({ originalContentUrl: parsed.originalContentUrl ?? '', previewImageUrl: url }) })}
+                      />
                     </div>
                   )
                 })()}

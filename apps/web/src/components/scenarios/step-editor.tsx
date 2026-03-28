@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import type { ScenarioStep, MessageType } from '@line-crm/shared'
+import MediaUrlInput from '@/components/media-url-input'
 
 interface StepEditorProps {
   step?: ScenarioStep
@@ -156,33 +157,14 @@ export default function StepEditor({ step, stepOrder, onSave, onCancel }: StepEd
           try { parsed = JSON.parse(messageContent) } catch { /* not yet valid */ }
           return (
             <div className="space-y-2 mb-2">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">元画像URL (originalContentUrl)</label>
-                <input
-                  type="url"
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                  placeholder="https://example.com/image.png"
-                  value={parsed.originalContentUrl ?? ''}
-                  onChange={(e) => {
-                    const orig = e.target.value
-                    const prev = parsed.previewImageUrl ?? orig
-                    setMessageContent(JSON.stringify({ originalContentUrl: orig, previewImageUrl: prev }))
-                  }}
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">プレビュー画像URL (previewImageUrl)</label>
-                <input
-                  type="url"
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                  placeholder="https://example.com/preview.png (空欄で元画像と同じ)"
-                  value={parsed.previewImageUrl ?? ''}
-                  onChange={(e) => {
-                    const prev = e.target.value
-                    setMessageContent(JSON.stringify({ originalContentUrl: parsed.originalContentUrl ?? '', previewImageUrl: prev }))
-                  }}
-                />
-              </div>
+              <MediaUrlInput accept="image" label="元画像URL" placeholder="https://example.com/image.png"
+                value={parsed.originalContentUrl ?? ''}
+                onChange={url => setMessageContent(JSON.stringify({ originalContentUrl: url, previewImageUrl: url }))}
+              />
+              <MediaUrlInput accept="image" label="プレビュー画像URL" placeholder="空欄で元画像と同じ"
+                value={parsed.previewImageUrl ?? ''}
+                onChange={url => setMessageContent(JSON.stringify({ originalContentUrl: parsed.originalContentUrl ?? '', previewImageUrl: url }))}
+              />
             </div>
           )
         })()}
