@@ -8,7 +8,7 @@
 ### 特徴
 - **フル機能CRM**: ステップ配信、オートリプライ、フォーム、アンケート、リマインダ、スコアリング
 - **マルチアカウント対応**: 複数のLINE公式アカウントを1プラットフォームで管理
-- **実用的UI**: Next.js 15 + React で構築された直感的なダッシュボード
+- **実用的UI**: Next.js 15 + React 19 + ダークネイビーサイドバーの直感的ダッシュボード
 - **OSSベース**: MIT License - 自由にカスタマイズ・運用可能
 
 ---
@@ -16,19 +16,22 @@
 ## 技術スタック
 
 ### フロントエンド
-- **Next.js 15** (App Router)
-- **React 19**
-- **TailwindCSS** / **PostCSS**
-- **TypeScript**
+- **Next.js 15.1.0** (App Router, `output: 'export'` 静的サイト)
+- **React 19.0.0**
+- **TailwindCSS v4** / **PostCSS**
+- **TypeScript 5.7.0**
 
 ### バックエンド / API
 - **Cloudflare Workers** (Hono フレームワーク)
 - **Cloudflare D1** (SQLite3 互換 DB)
+- **Cloudflare KV** (画像アセット保存)
 - **TypeScript**
 
 ### LIFF / モバイルUI
-- **Vite** + **React** + **TypeScript**
+- **Vite 6.0.0** + TypeScript
 - LINE LIFF SDK 統合
+- LIFF ID: `2009615537-8qwrEnEt`
+- エンドポイントURL: `https://line-harness-mamayoro.s-kamiya.workers.dev/liff`
 
 ### パッケージ管理
 - **pnpm** ワークスペース（モノレポ構成）
@@ -43,38 +46,44 @@ line-harness-oss/
 ├── apps/
 │   ├── worker/              # Cloudflare Workers バックエンド
 │   │   ├── src/
-│   │   │   ├── index.ts     # メインエントリ、CORS・Auth設定
-│   │   │   ├── routes/      # API各ルート（webhook, friends, scenarios等）
-│   │   │   ├── middleware/  # 認証ミドルウェア
+│   │   │   ├── index.ts     # メインエントリ、CORS・Auth設定、/liff・/r/:ref ルート
+│   │   │   ├── routes/      # API各ルート（26ファイル）
+│   │   │   ├── middleware/  # 認証ミドルウェア (auth.ts)
 │   │   │   └── services/    # ビジネスロジック
+│   │   │       ├── broadcast.ts       # 一斉配信処理
+│   │   │       ├── event-bus.ts       # イベント発火・Webhook/Scoring/Automation
+│   │   │       ├── step-delivery.ts   # ステップ配信処理
+│   │   │       ├── reminder-delivery.ts
+│   │   │       ├── stealth.ts         # 人間らしい送信パターン
+│   │   │       └── auto-track.ts      # URLトラッキング自動変換
 │   │   ├── wrangler.toml    # CF Workers 設定
 │   │   └── package.json
 │   │
 │   ├── web/                 # Next.js ダッシュボード
 │   │   ├── src/
-│   │   │   ├── app/         # App Router
+│   │   │   ├── app/         # App Router (27ページ)
 │   │   │   ├── components/  # React コンポーネント
-│   │   │   ├── contexts/    # React Context など
-│   │   │   └── lib/         # ユーティリティ
+│   │   │   ├── contexts/    # React Context
+│   │   │   └── lib/         # ユーティリティ・API クライアント
 │   │   ├── next.config.ts
 │   │   └── package.json
 │   │
-│   └── liff/                # LIFF フロントエンド（React + Vite）
+│   └── liff/                # LIFF フロントエンド（Vite + TypeScript）
 │       ├── src/
-│       │   ├── main.ts      # エントリポイント
-│       │   ├── form.ts      # フォーム機能
-│       │   ├── booking.ts   # 予約機能
-│       │   └── ...
+│       │   ├── main.ts      # 友だち追加フロー
+│       │   ├── form.ts      # フォーム表示・送信
+│       │   └── booking.ts   # 予約カレンダー
+│       ├── .env             # VITE_API_URL, VITE_LIFF_ID (gitignore対象)
 │       ├── vite.config.ts
 │       └── package.json
 │
 ├── packages/
 │   ├── db/                  # D1 スキーマ & マイグレーション
 │   │   ├── schema.sql
-│   │   ├── schema-full.sql  # 本番導入用：全42テーブル統合版
+│   │   ├── schema-full.sql  # 本番導入用：全テーブル統合版
 │   │   ├── migrations/      # 段階的マイグレーション (001〜009)
 │   │   └── src/
-│   │       └── *.ts         # DB操作関数（friends, scenarios等）
+│   │       └── *.ts         # DB操作関数
 │   │
 │   ├── line-sdk/            # LINE SDK ラッパー
 │   │   └── src/
@@ -82,28 +91,14 @@ line-harness-oss/
 │   │       ├── webhook.ts   # Webhook 署名検証
 │   │       └── types.ts     # 型定義
 │   │
-│   ├── sdk/                 # ままよろ向け SDK（将来拡張用）
-│   │   └── ...
-│   │
 │   └── shared/              # 共有型・定数
 │       └── src/
-│           └── *.ts
+│           └── types.ts     # MessageType, ApiResponse等の共有型定義
 │
 ├── docs/
 │   ├── SPEC.md              # 完全仕様書
-│   ├── wiki/                # 詳細ドキュメント
-│   │   ├── 09-Rich-Menus.md
-│   │   ├── 11-Forms-and-LIFF.md
-│   │   ├── 21-Deployment.md
-│   │   └── ...
-│   └── PROGRESS.md
+│   └── wiki/                # 詳細ドキュメント
 │
-├── scripts/
-│   └── sync-oss.sh          # OSS同期スクリプト
-│
-├── package.json             # ルートパッケージ
-├── pnpm-workspace.yaml      # ワークスペース定義
-├── tsconfig.base.json       # TS 共有設定
 └── CLAUDE.md                # このファイル（開発ガイド）
 ```
 
@@ -113,67 +108,319 @@ line-harness-oss/
 
 ### セットアップ
 ```bash
-# 依存関係のインストール
 pnpm install
-
-# TypeScript ビルド確認
 pnpm -r run build
 ```
 
 ### 開発
 
-#### Next.js ダッシュボード
 ```bash
-cd apps/web
-pnpm dev
-# → http://localhost:3000
-```
+# Next.js ダッシュボード
+cd apps/web && pnpm dev        # → http://localhost:3000
 
-#### Cloudflare Workers (ローカル開発)
-```bash
-cd apps/worker
-pnpm dev
-# → http://localhost:8787
-```
+# Cloudflare Workers
+cd apps/worker && pnpm dev     # → http://localhost:8787
 
-#### LIFF フロントエンド
-```bash
-cd apps/liff
-pnpm dev
-# → http://localhost:5173
+# LIFF フロントエンド
+cd apps/liff && pnpm dev       # → http://localhost:3002
 ```
 
 ### データベース
 
-#### D1 スキーマ確認
 ```bash
-# リモート D1 内容確認
+# リモート D1 テーブル確認
 wrangler d1 execute line-crm --remote --command "SELECT name FROM sqlite_master WHERE type='table';"
 
 # 初期化（新規プロジェクト）
 wrangler d1 execute line-crm --file packages/db/schema-full.sql --remote
-```
 
-#### マイグレーション実行
-```bash
-# 段階的適用（既存DBへの追加機能）
+# マイグレーション実行
 wrangler d1 execute line-crm --file packages/db/migrations/001_round2.sql --remote
-wrangler d1 execute line-crm --file packages/db/migrations/002_round3.sql --remote
 # ... 009 まで
 ```
 
 ### デプロイ
 
-#### Worker デプロイ
 ```bash
-cd apps/worker
-pnpm deploy
+# Worker デプロイ
+cd apps/worker && npx wrangler deploy
+
+# Vercel デプロイ（git push で自動 or 手動）
+npx vercel deploy --prod
 ```
 
-#### Next.js デプロイ（Vercel など）
+### LIFFアプリ更新（KVに再アップロード）
+
 ```bash
-cd apps/web
-# Vercel CLI または git push main → 自動デプロイ
+# LIFFをリビルド
+cd apps/liff && npx vite build
+
+# JSをKVにアップロード（MIMEタイプ付き）
+cd ../worker
+npx wrangler kv key put --namespace-id 86808b1b6a0a4d45be74d2e1df497f88 \
+  "liff.js" --path "../liff/dist/assets/liff.js" \
+  --metadata '{"contentType":"application/javascript"}'
+
+# HTMLをKVにアップロード
+npx wrangler kv key put --namespace-id 86808b1b6a0a4d45be74d2e1df497f88 \
+  "liff-index.html" --path "../liff/dist/index.html" \
+  --metadata '{"contentType":"text/html"}'
+
+# Workerを再デプロイ
+npx wrangler deploy
+```
+
+---
+
+## デプロイ情報
+
+### Vercel（Next.js ダッシュボード）
+- **プロジェクト**: `onlinesecretary/line-harness-oss`
+- **本番URL**: `https://line-harness-oss-teal.vercel.app`
+- **ビルドコマンド**: `pnpm --filter @line-crm/shared build && pnpm --filter web build`
+- **出力ディレクトリ**: `apps/web/out`
+- **注意**: `packages/shared/dist/` は gitignore対象のため、Vercel CI でビルド時に再生成必須 → `vercel.json` の `buildCommand` で対応済み
+
+### Cloudflare Workers（バックエンド）
+- **Worker名**: `line-harness-mamayoro`
+- **本番URL**: `https://line-harness-mamayoro.s-kamiya.workers.dev`
+- **アカウントID**: `f00cff121653deb09e6d20bbfca5349a`
+- **D1 DB**: `line-crm` (ID: `df15a84f-3aa0-4257-823a-524d308cf98a`)
+- **KV**: ASSETS (ID: `86808b1b6a0a4d45be74d2e1df497f88`)
+- **Cron**: `*/5 * * * *`（5分ごとにステップ配信・予約配信・リマインダ実行）
+
+### LIFF
+- **LIFF ID**: `2009615537-8qwrEnEt`
+- **エンドポイントURL**: `https://line-harness-mamayoro.s-kamiya.workers.dev/liff`
+- **配信方式**: WorkerのKVストアから配信（`/liff` ルートで `liff-index.html` を返却、`/assets/liff.js` でJSを配信）
+- **フォームURL形式**: `https://liff.line.me/2009615537-8qwrEnEt?page=form&id={FORM_ID}`
+- **予約URL形式**: `https://liff.line.me/2009615537-8qwrEnEt?page=book`
+
+---
+
+## 環境変数一覧
+
+### Cloudflare Workers（wrangler secrets + vars）
+
+| 変数名 | 種別 | 説明 |
+|--------|------|------|
+| `LINE_CHANNEL_SECRET` | Secret | LINE Messaging API チャネルシークレット |
+| `LINE_CHANNEL_ACCESS_TOKEN` | Secret | LINE Messaging API アクセストークン |
+| `LINE_CHANNEL_ID` | Secret | LINE Messaging API チャネルID |
+| `LINE_LOGIN_CHANNEL_ID` | Secret | LINE Login チャネルID |
+| `LINE_LOGIN_CHANNEL_SECRET` | Secret | LINE Login チャネルシークレット |
+| `API_KEY` | Secret | 管理API認証キー（32文字以上推奨） |
+| `ALLOWED_ORIGINS` | Secret | CORS許可オリジン（カンマ区切り） |
+| `LIFF_URL` | Secret | LIFFアプリURL（`https://liff.line.me/2009615537-8qwrEnEt`） |
+| `WORKER_URL` | Var | Workerの公開URL（`https://line-harness-mamayoro.s-kamiya.workers.dev`） |
+| `X_HARNESS_URL` | Secret | X Harness API URL（省略可） |
+| `DB` | Binding | D1 データベース |
+| `ASSETS` | Binding | KV 画像ストア（LIFF配信も兼用） |
+
+```bash
+# シークレット設定方法
+wrangler secret put LINE_CHANNEL_SECRET
+wrangler secret put LINE_CHANNEL_ACCESS_TOKEN
+wrangler secret put API_KEY
+wrangler secret put ALLOWED_ORIGINS
+wrangler secret put LIFF_URL
+```
+
+### Next.js ダッシュボード（Vercel環境変数）
+
+| 変数名 | 説明 |
+|--------|------|
+| `NEXT_PUBLIC_API_URL` | Worker API エンドポイント（`https://line-harness-mamayoro.s-kamiya.workers.dev`） |
+| `NEXT_PUBLIC_API_KEY` | 管理API認証キー（Worker の `API_KEY` と同じ値） |
+| `NEXT_PUBLIC_LIFF_ID` | LIFF アプリID（`2009615537-8qwrEnEt`） |
+
+> ⚠️ **重要**: `printf "value" | npx vercel env add KEY production` を使うこと。`echo` は末尾改行が入りバグの原因になる。
+
+### LIFF アプリ（`apps/liff/.env`、gitignore対象）
+
+```
+VITE_API_URL=https://line-harness-mamayoro.s-kamiya.workers.dev
+VITE_LIFF_ID=2009615537-8qwrEnEt
+VITE_BOT_BASIC_ID=@xxxxxx          # LINE Bot の基本ID
+VITE_CALENDAR_CONNECTION_ID=xxxx   # Google Calendar接続ID（予約機能用）
+```
+
+### ローカル開発（`apps/worker/.dev.vars`）
+
+```
+LINE_CHANNEL_SECRET=xxxxx
+LINE_CHANNEL_ACCESS_TOKEN=xxxxx
+API_KEY=your-secret-key
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+LIFF_URL=https://liff.line.me/2009615537-8qwrEnEt
+WORKER_URL=http://localhost:8787
+```
+
+---
+
+## 実装済み機能一覧
+
+### メッセージ配信
+- **ステップ配信（シナリオ）**: 遅延付きの自動メッセージシーケンス
+  - トリガー: `friend_add` / `tag_added` / `manual`
+  - メッセージ種別: テキスト・画像・Flex・カルーセル・動画・リッチメニュー切替
+  - クイックリプライ対応
+  - 変数展開: `{{name}}` / `{{uid}}` / `{{ref}}` / `{{#if_ref}}...{{/if_ref}}`
+  - 配信時間帯制御（9:00〜23:00 JST）・ジッター付き
+  - 条件分岐: `tag_exists` / `tag_not_exists` / `metadata_equals` / `metadata_not_equals`
+
+- **一斉配信（ブロードキャスト）**: 全フォロワーまたはタグ絞り込み配信
+  - 即時送信・予約配信
+  - ステルス送信（バッチ遅延・メッセージバリエーション）
+  - URLトラッキング自動変換
+
+- **オートリプライ**: キーワードマッチによる自動返信
+
+- **リマインダ配信**: 特定日時基準のステップ配信
+
+### メッセージ作成強化
+- **対応メッセージ種別**: `text` / `image` / `flex` / `carousel` / `video` / `rich_menu`
+- **クイックリプライ**: 全メッセージタイプに追加可能
+- **Flexプレビュー**: JSON入力でリアルタイムプレビュー表示（`flex-preview.tsx`）
+- **テンプレート挿入**: 保存済みテンプレートからワンクリック挿入
+- **変数プレビュー**: `{{name}}` 等のサンプル値置換プレビュー
+- **テスト送信**: 管理者自身への事前テスト送信
+- **フォーム配信**: LIFFフォームへのリンクボタン付きFlex自動生成
+- **リッチメニュー切替アクション**: シナリオステップでメニューをリンク/解除
+
+### フォームビルダー
+- **9種フィールド**: `text` / `email` / `tel` / `number` / `textarea` / `select` / `radio` / `checkbox` / `date` / `file`
+- 送信時タグ付与・シナリオ自動登録
+- メタデータ保存（スコアリングと連携）
+- **Kintone連携**: サブドメイン・AppID・APIトークン・フィールドマッピング設定
+- 回答一覧・CSV エクスポート
+
+### 画像ホスティング（KV）
+- **Workers KV** に保存（最大10MB/ファイル）
+- アップロードAPI: `POST /api/assets/upload`（multipart/form-data または `image/*`）
+- 公開配信: `GET /assets/:filename`（認証不要・永続キャッシュ）
+- 対応形式: PNG / JPEG / GIF / WebP / SVG
+- **LIFFアプリ**もKV配信（`liff-index.html` / `liff.js`）
+
+### リッチメニュービルダー
+- リッチメニュー作成・削除・デフォルト設定
+- **メニュー画像アップロード** → KV保存 → LINE APIへPOST
+- **セグメント切替**: フレンド個別にリッチメニューをリンク/解除
+- **自動切替**: オートメーションアクション `switch_rich_menu` でシナリオ・自動化から切替
+- LINE Developers ConsoleのリッチメニューIDインポート対応
+- リッチメニューマッピング管理（フレンドとメニューの対応表）
+
+### イベントバス & Webhook OUT
+- **全イベント種別**:
+
+  | イベント | 発火タイミング |
+  |----------|----------------|
+  | `friend_add` | 友だち追加時 |
+  | `tag_added` | タグ付与時 |
+  | `tag_removed` | タグ削除時 |
+  | `message_received` | メッセージ受信時 |
+  | `form_submitted` | フォーム送信時 |
+  | `broadcast_sent` | 一斉配信完了時 |
+  | `scenario_started` | シナリオ開始時 |
+  | `scenario_completed` | シナリオ完了時 |
+  | `cv_fire` | コンバージョン発生時 |
+  | `score_threshold` | スコア閾値到達時 |
+  | `calendar_booked` | カレンダー予約時 |
+
+- **友だち詳細情報付きペイロード**: `friendId` があれば、名前・タグ一覧・スコアを自動付与してWebhook送信
+- 送信Webhookにシークレット署名（`X-Harness-Signature`）対応
+
+### 自動化（オートメーション）
+- IF-THENルール: イベント発生時に自動アクション実行
+- **アクション種別**: `add_tag` / `remove_tag` / `start_scenario` / `send_message` / `send_webhook` / `switch_rich_menu` / `update_metadata`
+- 優先度制御・実行ログ記録
+
+### スコアリング
+- ポイントルール設定（イベント種別×ポイント）
+- フレンドごとの累計スコア管理
+- スコア閾値アクションでオートメーション連携
+
+### 認証 & セキュリティ
+- `Authorization: Bearer {API_KEY}` ヘッダー認証
+- 認証スキップパス一覧（`apps/worker/src/middleware/auth.ts`）:
+  - `/webhook`, `/docs`, `/openapi.json`
+  - `/api/affiliates/click`, `/api/liff/*`, `/auth/*`
+  - `/liff`（LIFFアプリ配信）
+  - `/assets/*`, `/t/*`, `/r/*`（公開リソース）
+  - `/api/forms/:id`（フォーム定義取得）
+  - `/api/forms/:id/submit`（フォーム送信）
+  - `/api/rich-menus/:id/image`（独自トークン認証）
+  - `/api/forms/:id/submissions/csv`（クエリトークン認証）
+  - `/api/webhooks/incoming/:id/receive`（受信Webhook）
+  - `/api/integrations/stripe/webhook`（Stripe Webhook）
+- LINE Webhook署名検証（`X-Line-Signature`）
+- SQLインジェクション対策（全操作でプリペアドステートメント使用）
+
+### UI・デザイン
+- **ダークネイビーサイドバー** + ライトコンテンツエリアのハイブリッドデザイン
+- ダッシュボード: KPI集計、最近の配信・フレンド一覧、アカウントステータス
+- リッチメニュー管理画面にリアルタイム画像プレビュー
+- Flexメッセージプレビューコンポーネント（`flex-preview.tsx`）
+- 全ページ日本語UI
+
+### その他
+- **Google Calendar連携**: 空き枠確認・予約受付・LIFFカレンダーUI
+- **アフィリエイト追跡**: クリックID・コミッション率・成果レポート
+- **広告プラットフォーム連携**: Facebook/Google Ads コンバージョンAPI
+- **アカウントヘルスモニタリング**: BAN検知（normal/warning/danger）
+- **マルチアカウント**: 複数LINE公式アカウントを1システムで管理
+- **Stripe連携**: 決済イベント受信・フレンド照合
+- **短縮リンク**: `/r/:ref` → LIFFへのリダイレクト（LINE友だち追加URL）
+
+---
+
+## データベーステーブル一覧（D1）
+
+```
+# 友だち管理
+friends, tags, friend_tags
+
+# シナリオ配信
+scenarios, scenario_steps, friend_scenarios
+
+# 配信・メッセージ
+broadcasts, messages_log, auto_replies, templates
+
+# ユーザー・アカウント管理
+admin_users, users, line_accounts, operators
+
+# コンバージョン・アフィリエイト
+conversion_points, conversion_events
+affiliates, affiliate_clicks
+
+# Google Calendar
+google_calendar_connections, calendar_bookings
+
+# 決済
+stripe_events
+
+# Webhook
+incoming_webhooks, outgoing_webhooks
+
+# リマインダ
+reminders, reminder_steps, friend_reminders, friend_reminder_deliveries
+
+# スコアリング
+scoring_rules, friend_scores
+
+# 広告・トラッキング
+ad_platforms, ad_conversion_logs, tracked_links
+
+# オペレーション
+chats, notification_rules, notifications
+automations, automation_logs
+account_health_logs, account_migrations
+
+# リッチメニュー
+rich_menus, rich_menu_mappings
+
+# フォーム
+forms, form_submissions
 ```
 
 ---
@@ -181,10 +428,6 @@ cd apps/web
 ## セキュリティ注意事項
 
 ### 1. SQLインジェクション対策 ✅
-- **プリペアドステートメント必須**: 全SQL操作で `.prepare()` + `.bind()` を使用
-- 文字列結合での動的SQL埋め込みは **厳禁**
-- 例外: `webhook.ts` line 312 の `auto_replies` クエリ（修正済み）
-
 ```typescript
 // ❌ 危険（文字列結合）
 .prepare(`WHERE line_account_id = '${id}'`)
@@ -194,114 +437,120 @@ cd apps/web
 ```
 
 ### 2. CORS設定 ✅
-- **本番環境では origin: '*' を許可しない**
-- 環境変数 `ALLOWED_ORIGINS` で制御（カンマ区切り）
-- 未設定時はデフォルト値を使用（通常は自社ドメインのみ）
-
 ```typescript
-// index.ts の CORS ミドルウェア
 const origins = c.env.ALLOWED_ORIGINS?.split(',') ?? ['https://mamayoro.com'];
 app.use('*', cors({ origin: origins }));
 ```
 
-### 3. LINE Webhook 署名検証 ✅
-- 全 webhook イベント前に `verifySignature()` で署名を検証
-- 既実装: `webhook.ts` line 52
+### 3. 環境変数に改行を含めない ✅
+```bash
+# ❌ 危険（echo は末尾改行を含む）
+echo "KEY_VALUE" | vercel env add VAR_NAME production
 
-### 4. API認証キー 🔐
-- `API_KEY` は環境変数で管理
-- 本番環境ではランダムな強力な値（32文字以上推奨）
-- リクエストヘッダ `Authorization: Bearer {API_KEY}` で検証
-
-### 5. D1データベース接続
-- `wrangler.toml` の `binding` でセキュアに接続
-- コネクションプール化（Workers での最適化）
-
-### 6. 環境変数管理（`.dev.vars` / Wrangler Secrets）
+# ✅ 安全（printf は改行を含まない）
+printf "KEY_VALUE" | vercel env add VAR_NAME production
 ```
-# .dev.vars （ローカル開発用）
-LINE_CHANNEL_SECRET=xxxxx
-LINE_CHANNEL_ACCESS_TOKEN=xxxxx
-API_KEY=your-secret-key
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+コード側でも取得時に必ず `.trim()` を使用（`getApiKey()`, `LIFF_ID` 変数参照）
 
-# Wrangler Secrets （本番環境）
-wrangler secret put LINE_CHANNEL_SECRET
-wrangler secret put LINE_CHANNEL_ACCESS_TOKEN
-wrangler secret put API_KEY
-wrangler secret put ALLOWED_ORIGINS
-```
+### 4. LINE Webhook 署名検証 ✅
+- `webhook.ts` で `verifySignature()` を全イベント前に実行
 
----
-
-## ままよろ向けカスタマイズ方針
-
-### 実装済み
-1. ✅ マルチアカウント対応 (`friends.line_account_id`, `scenarios.line_account_id` 等)
-2. ✅ SQLインジェクション対策 (プリペアドステートメント)
-3. ✅ CORS環境変数制御
-4. ✅ LINE Login 統合
-5. ✅ Webhook IN/OUT
-6. ✅ Google Calendar 連携
-7. ✅ アクション自動化
-8. ✅ リマインダ配信
-9. ✅ スコアリング機能
-10. ✅ メタデータ拡張
-
-### 今後の拡張想定
-- **Stripe 決済連携** (既に基盤実装)
-- **Slack 通知** (notification_rules テーブル用意済み)
-- **カスタムフック** (webhook OUT 用)
-- **AI自動返信** (LLM API 連携)
-- **SMS 連携** (多チャネル対応)
+### 5. API認証キー 🔐
+- `API_KEY` は32文字以上の乱数推奨
+- `Authorization: Bearer {API_KEY}` で検証
+- フロントエンドでは `localStorage.lh_api_key` → `NEXT_PUBLIC_API_KEY` のフォールバック
 
 ---
 
 ## トラブルシューティング
 
+### Vercelビルドエラー（TypeScript型エラー）
+- `packages/shared/dist/` は gitignore対象 → Vercel CI で `@line-crm/shared` を先にビルド必須
+- `vercel.json` の `buildCommand` で対応済み
+
+### 改行文字によるFetch APIエラー
+```
+TypeError: Failed to execute 'set' on 'Headers': Invalid value
+```
+- `NEXT_PUBLIC_API_KEY` や `NEXT_PUBLIC_LIFF_ID` に `\n` が混入している
+- Vercel環境変数を `printf` で再設定し、コード側でも `.trim()` を使用
+
+### LIFF Unauthorized エラー
+- LIFFエンドポイントURLがWorkerに向いている場合、`/liff` パスが認証対象になる
+- `auth.ts` で `path === '/liff'` をホワイトリスト済み
+- 正しいLIFFエンドポイントURL: `https://line-harness-mamayoro.s-kamiya.workers.dev/liff`
+
+### Flex配信でURIに改行が含まれる
+- `NEXT_PUBLIC_LIFF_ID` の末尾改行が原因
+- `broadcast-form.tsx`, `templates/page.tsx`, `scenario-detail-client.tsx` の `LIFF_ID` 取得時に `.trim()` 済み
+
 ### CORS エラー
 ```
 Error: Access to XMLHttpRequest blocked by CORS policy
 ```
-→ `Env.ALLOWED_ORIGINS` を確認。複数ドメイン時はカンマ区切り
+→ `ALLOWED_ORIGINS` にフロントエンドのオリジンを追加（カンマ区切り）
 
 ### D1 接続エラー
 ```
 Error: Database not bound
 ```
 → `wrangler.toml` で `binding = "DB"` が設定されているか確認
-→ `wrangler d1 list` で D1 が作成されているか確認
-
-### LINE Webhook 署名検証失敗
-```
-Invalid LINE signature error
-```
-→ `LINE_CHANNEL_SECRET` が正しいか確認
-→ Raw body の encoding を確認（JSON パース後ではなく raw として検証）
 
 ### TypeScript エラー
 ```bash
-# 全パッケージの型チェック
 pnpm -r run typecheck
-
-# ビルド確認
 pnpm -r run build
 ```
 
 ---
 
-## サポート・責任者
+## ままよろ向けカスタマイズ方針
 
-- **開発代理人**: Claude (AI)
-- **本番運用**: ままよろ エンジニアチーム
-- **OSSコントリビューション**: LINE-related improvements only
+### 実装済み ✅
+1. マルチアカウント対応
+2. SQLインジェクション対策（プリペアドステートメント）
+3. CORS環境変数制御
+4. LINE Login統合
+5. Webhook IN/OUT（全イベント種別・friend詳細情報付きペイロード）
+6. Google Calendar連携
+7. アクション自動化（Automation）
+8. リマインダ配信
+9. スコアリング機能
+10. メタデータ拡張
+11. 画像ホスティング（Cloudflare KV）
+12. リッチメニュービルダー＋セグメント切替＋自動切替
+13. フォームビルダー（9種フィールド＋Kintone連携）
+14. Flexメッセージプレビュー
+15. ダークテーマUI（ネイビーサイドバー）
+16. メッセージ送信強化（カルーセル・クイックリプライ・動画・テンプレート挿入・変数プレビュー・テスト送信・フォーム送信・リッチメニュー切替アクション）
+17. LIFFアプリ（友だち追加・フォーム・予約）、Worker KV配信
+18. URLトラッキング自動変換（Auto-track）
+19. アフィリエイト追跡
+20. アカウントヘルスモニタリング
+21. 広告プラットフォーム連携（Facebook/Google Ads）
+22. 環境変数の改行バグ防止（.trim() 徹底）
+
+### 今後の拡張想定
+- **Stripe 決済連携** (基盤実装済み)
+- **Slack 通知** (notification_rules テーブル用意済み)
+- **AI自動返信** (LLM API 連携)
+- **SMS 連携** (多チャネル対応)
 
 ---
 
-## ライセンス
+## 自動更新ルール
 
-MIT License - 自由にカスタマイズ・拡張・商用利用可能
+- 機能追加・修正・設定変更を行った場合、作業完了時にCLAUDE.mdの該当セクションを必ず更新すること。
+- git commitする前にCLAUDE.mdの更新を含めること。
+- 特に以下の変更時は対応セクションを更新する:
+  - 新しい環境変数の追加/削除 → 「環境変数一覧」セクション
+  - 新しいAPIエンドポイント → 「実装済み機能一覧」
+  - 認証スキップパスの変更 → 「認証 & セキュリティ」
+  - デプロイ設定の変更 → 「デプロイ情報」
+  - LIFF設定の変更 → 「LIFF」セクション
+  - 新しいDBテーブル → 「データベーステーブル一覧」
+  - 既知のバグ修正・回避策 → 「トラブルシューティング」
 
 ---
 
-**最終更新**: 2026年3月26日 (Cloudflare Workers / D1 / Next.js 15対応)
+**最終更新**: 2026年3月28日
