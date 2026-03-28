@@ -54,19 +54,37 @@ function apiCall(path: string, options?: RequestInit): Promise<Response> {
 
 function getPage(): string | null {
   const path = window.location.pathname.replace(/^\/+/, '');
-  if (path === 'book') return 'book';
+  if (path === 'book' || path === 'booking') return 'booking';
   const params = new URLSearchParams(window.location.search);
-  return params.get('page');
+  const page = params.get('page');
+  if (page) return page;
+  // LIFF SDK passes query params via liff.state (URL-encoded)
+  const liffState = params.get('liff.state');
+  if (liffState) {
+    const stateParams = new URLSearchParams(liffState.replace(/^\?/, ''));
+    return stateParams.get('page');
+  }
+  return null;
+}
+
+/** Read a query parameter, also checking liff.state for LIFF-redirected URLs */
+function getQueryParam(name: string): string | null {
+  const params = new URLSearchParams(window.location.search);
+  const direct = params.get(name);
+  if (direct) return direct;
+  const liffState = params.get('liff.state');
+  if (liffState) {
+    return new URLSearchParams(liffState.replace(/^\?/, '')).get(name);
+  }
+  return null;
 }
 
 function getRedirectUrl(): string | null {
-  const params = new URLSearchParams(window.location.search);
-  return params.get('redirect');
+  return getQueryParam('redirect');
 }
 
 function getRef(): string | null {
-  const params = new URLSearchParams(window.location.search);
-  return params.get('ref');
+  return getQueryParam('ref');
 }
 
 function getSavedUuid(): string | null {
@@ -264,8 +282,7 @@ async function main() {
     if (page === 'book' || page === 'booking') {
       await initBooking();
     } else if (page === 'form') {
-      const params = new URLSearchParams(window.location.search);
-      const formId = params.get('id');
+      const formId = getQueryParam('id');
       await initForm(formId);
     } else {
       await linkAndAddFlow();
