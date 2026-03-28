@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { fetchApi, api } from '@/lib/api'
 import Header from '@/components/layout/header'
+import FlexPreview from '@/components/flex-preview'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -24,6 +25,9 @@ interface Form {
   onSubmitScenarioId: string | null
   isActive: boolean
   submitCount: number
+  submitReplyEnabled: boolean
+  submitReplyType: string
+  submitReplyContent: string | null
   kintoneEnabled: boolean
   kintoneSubdomain: string | null
   kintoneAppId: string | null
@@ -169,6 +173,9 @@ function FormBuilder({ form, tags, scenarios, onSaved, setError, setSuccess }: {
   const [fields, setFields] = useState<FormField[]>(form?.fields || [])
   const [tagId, setTagId] = useState(form?.onSubmitTagId || '')
   const [scenarioId, setScenarioId] = useState(form?.onSubmitScenarioId || '')
+  const [replyEnabled, setReplyEnabled] = useState(form?.submitReplyEnabled ?? true)
+  const [replyType, setReplyType] = useState(form?.submitReplyType || 'flex')
+  const [replyContent, setReplyContent] = useState(form?.submitReplyContent || '')
   const [kintoneEnabled, setKintoneEnabled] = useState(form?.kintoneEnabled || false)
   const [kintoneSubdomain, setKintoneSubdomain] = useState(form?.kintoneSubdomain || '')
   const [kintoneAppId, setKintoneAppId] = useState(form?.kintoneAppId || '')
@@ -204,6 +211,42 @@ function FormBuilder({ form, tags, scenarios, onSaved, setError, setSuccess }: {
     setFields(arr)
   }
 
+  const insertDefaultTemplate = () => {
+    const answerRows = fields.map(f => ({
+      type: 'box', layout: 'vertical', margin: 'md',
+      contents: [
+        { type: 'text', text: f.label, size: 'xxs', color: '#64748b' },
+        { type: 'text', text: `{{${f.name}}}`, size: 'sm', color: '#1e293b', weight: 'bold', wrap: true },
+      ],
+    }))
+    const template = {
+      type: 'bubble', size: 'giga',
+      header: {
+        type: 'box', layout: 'vertical',
+        contents: [
+          { type: 'text', text: '診断結果', size: 'lg', weight: 'bold', color: '#1e293b' },
+          { type: 'text', text: '{{name}}さんのプロフィール', size: 'xs', color: '#64748b', margin: 'sm' },
+        ],
+        paddingAll: '20px', backgroundColor: '#f0fdf4',
+      },
+      body: {
+        type: 'box', layout: 'vertical',
+        contents: answerRows.length > 0 ? answerRows : [
+          { type: 'text', text: '{{name}}さん、送信ありがとうございます！', size: 'sm', wrap: true, color: '#1e293b' },
+        ],
+        paddingAll: '20px',
+      },
+      footer: {
+        type: 'box', layout: 'vertical', paddingAll: '16px',
+        contents: [
+          { type: 'button', action: { type: 'message', label: 'アカウント連携を見る', text: 'アカウント連携を見る' }, style: 'primary', color: '#14b8a6' },
+        ],
+      },
+    }
+    setReplyContent(JSON.stringify(template, null, 2))
+    setReplyType('flex')
+  }
+
   const handleSave = async () => {
     if (!name.trim()) { setError('フォーム名を入力してください'); return }
     setSaving(true)
@@ -211,6 +254,9 @@ function FormBuilder({ form, tags, scenarios, onSaved, setError, setSuccess }: {
       const payload = {
         name, description: description || null, fields,
         onSubmitTagId: tagId || null, onSubmitScenarioId: scenarioId || null,
+        submitReplyEnabled: replyEnabled,
+        submitReplyType: replyType,
+        submitReplyContent: replyContent || null,
         kintoneEnabled, kintoneSubdomain: kintoneSubdomain || null,
         kintoneAppId: kintoneAppId || null, kintoneApiToken: kintoneApiToken || null,
         kintoneFieldMapping: Object.keys(kintoneFieldMapping).length > 0 ? kintoneFieldMapping : null,
@@ -358,6 +404,73 @@ function FormBuilder({ form, tags, scenarios, onSaved, setError, setSuccess }: {
                 <option value="">なし</option>
                 {scenarios.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
+            </div>
+
+            {/* 送信後メッセージ */}
+            <div className="border-t border-gray-200 pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-800">送信後メッセージ</h3>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={replyEnabled} onChange={(e) => setReplyEnabled(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+                  <span className={replyEnabled ? 'text-green-600 font-medium' : 'text-gray-400'}>
+                    {replyEnabled ? 'ON' : 'OFF'}
+                  </span>
+                </label>
+              </div>
+
+              {replyEnabled && (
+                <div className="space-y-3">
+                  {/* Type selector */}
+                  <div className="flex gap-4">
+                    {[['text', 'テキスト'], ['flex', 'Flex メッセージ']].map(([val, label]) => (
+                      <label key={val} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                        <input type="radio" value={val} checked={replyType === val} onChange={() => setReplyType(val)}
+                          className="w-3.5 h-3.5 text-blue-600" />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+
+                  {/* Variable reference */}
+                  <div className="p-3 bg-blue-50 rounded-lg text-xs text-blue-700 space-y-0.5">
+                    <p className="font-semibold mb-1">使用可能な変数:</p>
+                    <p><code className="bg-blue-100 px-1 rounded">{'{{'+'name'+'}}'}</code> = 友だちの名前</p>
+                    {fields.map(f => (
+                      <p key={f.name}><code className="bg-blue-100 px-1 rounded">{`{{${f.name}}}`}</code> = {f.label}</p>
+                    ))}
+                    {fields.length === 0 && <p className="text-blue-400">（フィールドを追加すると変数が使えます）</p>}
+                  </div>
+
+                  {replyType === 'text' && (
+                    <textarea value={replyContent} onChange={(e) => setReplyContent(e.target.value)} rows={4}
+                      placeholder={`{{name}}さん、ありがとうございます！`}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-y" />
+                  )}
+
+                  {replyType === 'flex' && (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-medium text-gray-600">Flex JSON</label>
+                        <button onClick={insertDefaultTemplate}
+                          className="px-3 py-1.5 text-xs font-medium text-white bg-gray-600 hover:bg-gray-700 rounded-lg transition-colors">
+                          デフォルトテンプレート挿入
+                        </button>
+                      </div>
+                      <textarea value={replyContent} onChange={(e) => setReplyContent(e.target.value)} rows={14}
+                        placeholder={'{\n  "type": "bubble",\n  ...\n}'}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs font-mono resize-y" />
+                      {replyContent && (() => {
+                        try {
+                          const preview = replyContent.replace(/\{\{name\}\}/g, '山田太郎').replace(/\{\{(\w+)\}\}/g, 'サンプル値')
+                          JSON.parse(preview)
+                          return <div className="mt-1"><FlexPreview content={preview} maxWidth={380} /></div>
+                        } catch { return <p className="text-xs text-red-500 mt-1">JSON が無効です</p> }
+                      })()}
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}

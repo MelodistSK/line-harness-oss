@@ -13,6 +13,9 @@ export interface Form {
   save_to_metadata: number;
   is_active: number;
   submit_count: number;
+  submit_reply_enabled: number; // 1 = send reply, 0 = no reply
+  submit_reply_type: string | null; // 'text' | 'flex'
+  submit_reply_content: string | null; // message body or Flex JSON string
   created_at: string;
   updated_at: string;
 }

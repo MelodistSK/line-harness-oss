@@ -27,6 +27,9 @@ function serializeForm(row: DbForm & { kintone_enabled?: number; kintone_subdoma
     saveToMetadata: Boolean(row.save_to_metadata),
     isActive: Boolean(row.is_active),
     submitCount: row.submit_count,
+    submitReplyEnabled: Boolean(row.submit_reply_enabled ?? 1),
+    submitReplyType: row.submit_reply_type ?? 'flex',
+    submitReplyContent: row.submit_reply_content ?? null,
     kintoneEnabled: Boolean(row.kintone_enabled),
     kintoneSubdomain: row.kintone_subdomain ?? null,
     kintoneAppId: row.kintone_app_id ?? null,
@@ -114,6 +117,18 @@ forms.post('/api/forms', async (c) => {
       ).run();
     }
 
+    // Save submit_reply fields if provided
+    if (kb.submitReplyEnabled !== undefined || kb.submitReplyType !== undefined || 'submitReplyContent' in kb) {
+      await c.env.DB.prepare(
+        `UPDATE forms SET submit_reply_enabled = ?, submit_reply_type = ?, submit_reply_content = ? WHERE id = ?`
+      ).bind(
+        kb.submitReplyEnabled !== false ? 1 : 0,
+        (kb.submitReplyType as string) || 'flex',
+        (kb.submitReplyContent as string) || null,
+        form.id,
+      ).run();
+    }
+
     return c.json({ success: true, data: serializeForm(form) }, 201);
   } catch (err) {
     console.error('POST /api/forms error:', err);
@@ -156,6 +171,18 @@ forms.put('/api/forms/:id', async (c) => {
         (kb.kintoneAppId as string) || null,
         (kb.kintoneApiToken as string) || null,
         kb.kintoneFieldMapping ? JSON.stringify(kb.kintoneFieldMapping) : null,
+        id,
+      ).run();
+    }
+
+    // Update submit_reply fields if provided
+    if (kb.submitReplyEnabled !== undefined || kb.submitReplyType !== undefined || 'submitReplyContent' in kb) {
+      await c.env.DB.prepare(
+        `UPDATE forms SET submit_reply_enabled = ?, submit_reply_type = ?, submit_reply_content = ? WHERE id = ?`
+      ).bind(
+        kb.submitReplyEnabled !== false ? 1 : 0,
+        (kb.submitReplyType as string) || 'flex',
+        (kb.submitReplyContent as string) || null,
         id,
       ).run();
     }
@@ -292,73 +319,94 @@ forms.post('/api/forms/:id/submit', async (c) => {
         sideEffects.push(enrollFriendInScenario(db, friendId, form.on_submit_scenario_id));
       }
 
-      // Send confirmation message with submitted data back to user
-      sideEffects.push(
-        (async () => {
-          console.log('Form reply: starting for friendId', friendId);
-          const friend = await getFriendById(db, friendId!);
-          if (!friend?.line_user_id) { console.log('Form reply: no line_user_id'); return; }
-          console.log('Form reply: sending to', friend.line_user_id);
-          const { LineClient } = await import('@line-crm/line-sdk');
-          // Resolve access token from friend's account (multi-account support)
-          let accessToken = c.env.LINE_CHANNEL_ACCESS_TOKEN;
-          if ((friend as unknown as Record<string, unknown>).line_account_id) {
-            const { getLineAccountById } = await import('@line-crm/db');
-            const account = await getLineAccountById(db, (friend as unknown as Record<string, unknown>).line_account_id as string);
-            if (account) accessToken = account.channel_access_token;
-          }
-          const lineClient = new LineClient(accessToken);
+      // Send confirmation message — use configured reply if set, otherwise default Flex
+      if (form.submit_reply_enabled !== 0) {
+        sideEffects.push(
+          (async () => {
+            console.log('Form reply: starting for friendId', friendId);
+            const friend = await getFriendById(db, friendId!);
+            if (!friend?.line_user_id) { console.log('Form reply: no line_user_id'); return; }
+            console.log('Form reply: sending to', friend.line_user_id);
+            const { LineClient } = await import('@line-crm/line-sdk');
+            // Resolve access token from friend's account (multi-account support)
+            let accessToken = c.env.LINE_CHANNEL_ACCESS_TOKEN;
+            if ((friend as unknown as Record<string, unknown>).line_account_id) {
+              const { getLineAccountById } = await import('@line-crm/db');
+              const account = await getLineAccountById(db, (friend as unknown as Record<string, unknown>).line_account_id as string);
+              if (account) accessToken = account.channel_access_token;
+            }
+            const lineClient = new LineClient(accessToken);
+            const { buildMessage } = await import('../services/step-delivery.js');
 
-          // Build Flex card showing their answers
-          const entries = Object.entries(submissionData as Record<string, unknown>);
-          const answerRows = entries.map(([key, value]) => {
-            const field = form.fields ? (JSON.parse(form.fields) as Array<{ name: string; label: string }>).find((f: { name: string }) => f.name === key) : null;
-            const label = field?.label || key;
-            const val = Array.isArray(value) ? value.join(', ') : (value !== null && value !== undefined && value !== '') ? String(value) : '-';
-            return {
-              type: 'box' as const, layout: 'vertical' as const, margin: 'md' as const,
-              contents: [
-                { type: 'text' as const, text: label, size: 'xxs' as const, color: '#64748b' },
-                { type: 'text' as const, text: val, size: 'sm' as const, color: '#1e293b', weight: 'bold' as const, wrap: true },
-              ],
-            };
-          });
+            if (form.submit_reply_content) {
+              // Use configurable message with variable substitution
+              const vars: Record<string, string> = { name: friend.display_name || '' };
+              for (const [key, val] of Object.entries(submissionData as Record<string, unknown>)) {
+                vars[key] = Array.isArray(val) ? val.join(', ') : String(val ?? '');
+              }
+              const resolved = form.submit_reply_content.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] ?? `{{${k}}}`);
 
-          const flex = {
-            type: 'bubble', size: 'giga',
-            header: {
-              type: 'box', layout: 'vertical',
-              contents: [
-                { type: 'text', text: '診断結果', size: 'lg', weight: 'bold', color: '#1e293b' },
-                { type: 'text', text: `${friend.display_name || ''}さんのプロフィール`, size: 'xs', color: '#64748b', margin: 'sm' },
-              ],
-              paddingAll: '20px', backgroundColor: '#f0fdf4',
-            },
-            body: {
-              type: 'box', layout: 'vertical',
-              contents: [
-                ...answerRows,
-                { type: 'separator', margin: 'lg' },
-                ...(form.save_to_metadata ? [{ type: 'box', layout: 'vertical', margin: 'lg', backgroundColor: '#eff6ff', cornerRadius: 'md', paddingAll: '12px',
+              if (form.submit_reply_type === 'text') {
+                await lineClient.pushMessage(friend.line_user_id, [{ type: 'text', text: resolved }]);
+              } else {
+                try {
+                  const flexObj = JSON.parse(resolved);
+                  await lineClient.pushMessage(friend.line_user_id, [buildMessage('flex', JSON.stringify(flexObj))]);
+                } catch (e) {
+                  console.error('Form reply: invalid Flex JSON', e);
+                }
+              }
+            } else {
+              // Default: auto-build Flex card from submitted data
+              const entries = Object.entries(submissionData as Record<string, unknown>);
+              const answerRows = entries.map(([key, value]) => {
+                const field = form.fields ? (JSON.parse(form.fields) as Array<{ name: string; label: string }>).find((f: { name: string }) => f.name === key) : null;
+                const label = field?.label || key;
+                const val = Array.isArray(value) ? value.join(', ') : (value !== null && value !== undefined && value !== '') ? String(value) : '-';
+                return {
+                  type: 'box' as const, layout: 'vertical' as const, margin: 'md' as const,
                   contents: [
-                    { type: 'text', text: 'メタデータに自動保存済み。今後の配信があなたに最適化されます。', size: 'xxs', color: '#2563EB', wrap: true },
+                    { type: 'text' as const, text: label, size: 'xxs' as const, color: '#64748b' },
+                    { type: 'text' as const, text: val, size: 'sm' as const, color: '#1e293b', weight: 'bold' as const, wrap: true },
                   ],
-                }] : []),
-              ],
-              paddingAll: '20px',
-            },
-            footer: {
-              type: 'box', layout: 'vertical', paddingAll: '16px',
-              contents: [
-                { type: 'button', action: { type: 'message', label: 'アカウント連携を見る', text: 'アカウント連携を見る' }, style: 'primary', color: '#14b8a6' },
-              ],
-            },
-          };
+                };
+              });
 
-          const { buildMessage } = await import('../services/step-delivery.js');
-          await lineClient.pushMessage(friend.line_user_id, [buildMessage('flex', JSON.stringify(flex))]);
-        })(),
-      );
+              const flex = {
+                type: 'bubble', size: 'giga',
+                header: {
+                  type: 'box', layout: 'vertical',
+                  contents: [
+                    { type: 'text', text: '診断結果', size: 'lg', weight: 'bold', color: '#1e293b' },
+                    { type: 'text', text: `${friend.display_name || ''}さんのプロフィール`, size: 'xs', color: '#64748b', margin: 'sm' },
+                  ],
+                  paddingAll: '20px', backgroundColor: '#f0fdf4',
+                },
+                body: {
+                  type: 'box', layout: 'vertical',
+                  contents: [
+                    ...answerRows,
+                    { type: 'separator', margin: 'lg' },
+                    ...(form.save_to_metadata ? [{ type: 'box', layout: 'vertical', margin: 'lg', backgroundColor: '#eff6ff', cornerRadius: 'md', paddingAll: '12px',
+                      contents: [
+                        { type: 'text', text: 'メタデータに自動保存済み。今後の配信があなたに最適化されます。', size: 'xxs', color: '#2563EB', wrap: true },
+                      ],
+                    }] : []),
+                  ],
+                  paddingAll: '20px',
+                },
+                footer: {
+                  type: 'box', layout: 'vertical', paddingAll: '16px',
+                  contents: [
+                    { type: 'button', action: { type: 'message', label: 'アカウント連携を見る', text: 'アカウント連携を見る' }, style: 'primary', color: '#14b8a6' },
+                  ],
+                },
+              };
+              await lineClient.pushMessage(friend.line_user_id, [buildMessage('flex', JSON.stringify(flex))]);
+            }
+          })(),
+        );
+      }
 
       if (sideEffects.length > 0) {
         const results = await Promise.allSettled(sideEffects);
