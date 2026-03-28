@@ -1,7 +1,7 @@
 import { jstNow } from './utils.js';
 export type BroadcastTargetType = 'all' | 'tag';
 export type BroadcastStatus = 'draft' | 'scheduled' | 'sending' | 'sent';
-export type BroadcastMessageType = 'text' | 'image' | 'flex';
+export type BroadcastMessageType = 'text' | 'image' | 'flex' | 'carousel' | 'video';
 
 export interface Broadcast {
   id: string;

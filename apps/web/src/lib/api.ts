@@ -66,6 +66,14 @@ export type FriendListParams = {
 export type FriendWithTags = Friend & { tags: Tag[] }
 
 export const api = {
+  forms: {
+    list: () =>
+      fetchApi<ApiResponse<{ id: string; name: string; description: string | null; isActive: boolean; submitCount: number; createdAt: string }[]>>('/api/forms'),
+  },
+  richMenus: {
+    list: () =>
+      fetchApi<ApiResponse<{ richMenuId: string; name: string; chatBarText: string }[]>>('/api/rich-menus'),
+  },
   friends: {
     list: (params?: FriendListParams) => {
       const query: Record<string, string> = {}
@@ -91,6 +99,11 @@ export const api = {
     removeTag: (friendId: string, tagId: string) =>
       fetchApi<ApiResponse<null>>(`/api/friends/${friendId}/tags/${tagId}`, {
         method: 'DELETE',
+      }),
+    sendMessage: (friendId: string, data: { content: string; messageType?: string }) =>
+      fetchApi<ApiResponse<{ messageId: string }>>(`/api/friends/${friendId}/messages`, {
+        method: 'POST',
+        body: JSON.stringify(data),
       }),
   },
   tags: {

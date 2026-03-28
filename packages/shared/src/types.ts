@@ -89,7 +89,7 @@ export interface Scenario {
 // -----------------------------------------------------------------------------
 
 /** メッセージ種別 */
-export type MessageType = "text" | "image" | "flex";
+export type MessageType = "text" | "image" | "flex" | "carousel" | "video" | "rich_menu";
 
 export interface ScenarioStep {
   /** 主キー (UUIDv4) */

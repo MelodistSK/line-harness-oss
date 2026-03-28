@@ -149,6 +149,20 @@ export interface UserProfile {
   statusMessage?: string;
 }
 
+// ─── Quick Reply types ────────────────────────────────────────────────────────
+
+export interface QuickReplyAction {
+  type: 'action';
+  action:
+    | { type: 'message'; label: string; text: string }
+    | { type: 'uri'; label: string; uri: string }
+    | { type: 'postback'; label: string; data: string; displayText?: string };
+}
+
+export interface QuickReply {
+  items: QuickReplyAction[];
+}
+
 // ─── Send message types ───────────────────────────────────────────────────────
 
 export type FlexContainer = object;
@@ -156,24 +170,28 @@ export type FlexContainer = object;
 export interface TextMessage {
   type: 'text';
   text: string;
+  quickReply?: QuickReply;
 }
 
 export interface ImageMessage {
   type: 'image';
   originalContentUrl: string;
   previewImageUrl: string;
+  quickReply?: QuickReply;
 }
 
 export interface FlexMessage {
   type: 'flex';
   altText: string;
   contents: FlexContainer;
+  quickReply?: QuickReply;
 }
 
 export interface VideoMessage {
   type: 'video';
   originalContentUrl: string;
   previewImageUrl: string;
+  quickReply?: QuickReply;
 }
 
 export interface TemplateMessage {

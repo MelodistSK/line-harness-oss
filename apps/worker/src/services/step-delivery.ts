@@ -161,6 +161,36 @@ async function processSingleDelivery(
     }
   }
 
+  // Handle rich_menu step (link/unlink — not a message send)
+  if ((currentStep.message_type as string) === 'rich_menu') {
+    try {
+      const { richMenuId, action } = JSON.parse(currentStep.message_content) as {
+        richMenuId?: string;
+        action?: 'link' | 'unlink';
+      };
+      if (action === 'unlink') {
+        await lineClient.unlinkRichMenuFromUser(friend.line_user_id);
+      } else if (richMenuId) {
+        await lineClient.linkRichMenuToUser(friend.line_user_id, richMenuId);
+      }
+    } catch (err) {
+      console.error('Rich menu step error:', err);
+    }
+    // Advance to next step without logging a message
+    const currentIndex = steps.indexOf(currentStep);
+    const nextStepAfterRm = currentIndex + 1 < steps.length ? steps[currentIndex + 1] : null;
+    if (nextStepAfterRm) {
+      const nextDeliveryDate = new Date(Date.now() + 9 * 60 * 60_000);
+      nextDeliveryDate.setMinutes(nextDeliveryDate.getMinutes() + nextStepAfterRm.delay_minutes);
+      const windowedDate = enforceDeliveryWindow(nextDeliveryDate, preferredHour);
+      const jitteredDate = jitterDeliveryTime(windowedDate);
+      await advanceFriendScenario(db, fs.id, currentStep.step_order, jitteredDate.toISOString().slice(0, -1) + '+09:00');
+    } else {
+      await completeFriendScenario(db, fs.id);
+    }
+    return;
+  }
+
   // Expand template variables ({{name}}, {{uid}}, {{auth_url:CHANNEL_ID}}, etc.)
   const expandedContent = expandVariables(currentStep.message_content, friend, workerUrl);
   // Auto-wrap URLs with tracking links (text with URLs → Flex with button)
@@ -247,6 +277,84 @@ async function evaluateCondition(
   }
 }
 
+// ─── Quick Reply & Carousel helpers ──────────────────────────────────────────
+
+interface QuickReplyItemDef {
+  label: string;
+  type: 'message' | 'uri';
+  value: string;
+}
+
+interface CarouselButton {
+  label: string;
+  type: 'message' | 'uri';
+  value: string;
+}
+
+interface CarouselCard {
+  title: string;
+  text: string;
+  imageUrl?: string;
+  buttons?: CarouselButton[];
+}
+
+function buildQuickReplyObject(items: QuickReplyItemDef[]): Record<string, unknown> {
+  return {
+    items: items.slice(0, 13).map((item) => ({
+      type: 'action',
+      action:
+        item.type === 'uri'
+          ? { type: 'uri', label: item.label.slice(0, 20), uri: item.value }
+          : { type: 'message', label: item.label.slice(0, 20), text: item.value },
+    })),
+  };
+}
+
+function buildCarouselContents(cards: CarouselCard[]): Record<string, unknown> {
+  return {
+    type: 'carousel',
+    contents: cards.slice(0, 10).map((card) => {
+      const bubble: Record<string, unknown> = { type: 'bubble' };
+      if (card.imageUrl) {
+        bubble.hero = {
+          type: 'image',
+          url: card.imageUrl,
+          size: 'full',
+          aspectRatio: '20:13',
+          aspectMode: 'cover',
+        };
+      }
+      bubble.body = {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          { type: 'text', text: card.title || ' ', weight: 'bold', size: 'md', wrap: true },
+          ...(card.text
+            ? [{ type: 'text', text: card.text, color: '#aaaaaa', size: 'sm', wrap: true, margin: 'sm' }]
+            : []),
+        ],
+      };
+      if (card.buttons && card.buttons.length > 0) {
+        bubble.footer = {
+          type: 'box',
+          layout: 'vertical',
+          spacing: 'sm',
+          contents: card.buttons.slice(0, 3).map((btn) => ({
+            type: 'button',
+            action:
+              btn.type === 'uri'
+                ? { type: 'uri', label: btn.label, uri: btn.value }
+                : { type: 'message', label: btn.label, text: btn.value },
+            style: 'link',
+            height: 'sm',
+          })),
+        };
+      }
+      return bubble;
+    }),
+  };
+}
+
 /** Recursively find the first text element in a Flex Message for altText */
 function extractFlexAltText(obj: unknown, depth = 0): string | null {
   if (depth > 10 || !obj || typeof obj !== 'object') return null;
@@ -290,35 +398,82 @@ function cleanEmptyNodes(obj: unknown): void {
 
 export function buildMessage(messageType: string, messageContent: string): Message {
   if (messageType === 'text') {
+    // Check if stored as JSON with _text (text + quick reply)
+    try {
+      const parsed = JSON.parse(messageContent) as Record<string, unknown>;
+      if (parsed._text !== undefined) {
+        const msg: Record<string, unknown> = { type: 'text', text: String(parsed._text) };
+        if (Array.isArray(parsed._quickReply) && parsed._quickReply.length > 0) {
+          msg.quickReply = buildQuickReplyObject(parsed._quickReply as QuickReplyItemDef[]);
+        }
+        return msg as unknown as Message;
+      }
+    } catch { /* not JSON — treat as plain text */ }
     return { type: 'text', text: messageContent };
   }
 
   if (messageType === 'image') {
-    // messageContent is expected to be JSON: { originalContentUrl, previewImageUrl }
     try {
       const parsed = JSON.parse(messageContent) as {
         originalContentUrl: string;
         previewImageUrl: string;
+        _quickReply?: QuickReplyItemDef[];
       };
-      return {
+      const msg: Record<string, unknown> = {
         type: 'image',
         originalContentUrl: parsed.originalContentUrl,
         previewImageUrl: parsed.previewImageUrl,
       };
+      if (Array.isArray(parsed._quickReply) && parsed._quickReply.length > 0) {
+        msg.quickReply = buildQuickReplyObject(parsed._quickReply);
+      }
+      return msg as unknown as Message;
     } catch {
-      // Fallback: treat as text if parsing fails
       return { type: 'text', text: messageContent };
     }
   }
 
   if (messageType === 'flex') {
     try {
-      const contents = JSON.parse(messageContent);
+      const parsed = JSON.parse(messageContent) as Record<string, unknown>;
+      const { _quickReply, ...contents } = parsed;
       // Remove empty text nodes (from {{#if_ref}} conditional blocks)
       cleanEmptyNodes(contents);
       // Extract first text element for altText (shown in notifications)
       const altText = extractFlexAltText(contents) || 'お知らせ';
-      return { type: 'flex', altText, contents };
+      const msg: Record<string, unknown> = { type: 'flex', altText, contents };
+      if (Array.isArray(_quickReply) && _quickReply.length > 0) {
+        msg.quickReply = buildQuickReplyObject(_quickReply as QuickReplyItemDef[]);
+      }
+      return msg as unknown as Message;
+    } catch {
+      return { type: 'text', text: messageContent };
+    }
+  }
+
+  if (messageType === 'carousel') {
+    try {
+      const parsed = JSON.parse(messageContent) as { cards: CarouselCard[]; _quickReply?: QuickReplyItemDef[] };
+      const contents = buildCarouselContents(parsed.cards ?? []);
+      const altText = parsed.cards?.[0]?.title || 'カルーセル';
+      const msg: Record<string, unknown> = { type: 'flex', altText, contents };
+      if (Array.isArray(parsed._quickReply) && parsed._quickReply.length > 0) {
+        msg.quickReply = buildQuickReplyObject(parsed._quickReply);
+      }
+      return msg as unknown as Message;
+    } catch {
+      return { type: 'text', text: messageContent };
+    }
+  }
+
+  if (messageType === 'video') {
+    try {
+      const parsed = JSON.parse(messageContent) as { originalContentUrl: string; previewImageUrl: string };
+      return {
+        type: 'video',
+        originalContentUrl: parsed.originalContentUrl,
+        previewImageUrl: parsed.previewImageUrl,
+      };
     } catch {
       return { type: 'text', text: messageContent };
     }
