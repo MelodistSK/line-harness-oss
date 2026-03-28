@@ -58,74 +58,123 @@ body {
 ::-webkit-scrollbar-thumb { background: rgba(148, 148, 215, 0.22); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(148, 148, 215, 0.38); }
 
-/* ─── Main Content: Dark Overrides ────────────────────────────────────── */
-/* Scope everything to <main> so the sidebar is unaffected                 */
+/* ══════════════════════════════════════════════════════════════════════════
+   DARK THEME — Scoped to <main> (sidebar is unaffected)
+   ══════════════════════════════════════════════════════════════════════════ */
 
-/* Backgrounds */
+/* Base: all text in main defaults to primary light color */
+main { color: var(--text-primary); }
+
+/* ── Neutral Backgrounds ─────────────────────────────────────────────────── */
 main .bg-white      { background-color: var(--surface-card)   !important; }
 main .bg-gray-50    { background-color: var(--surface-bg)     !important; }
 main .bg-gray-100   { background-color: var(--surface-raised) !important; }
-main .bg-gray-200   { background-color: #22223e              !important; }
+main .bg-gray-200   { background-color: #22223e               !important; }
+main .bg-gray-300   { background-color: #2e2e50               !important; }
 
-/* Borders */
-main .border-gray-100 { border-color: var(--border-subtle)  !important; }
-main .border-gray-200 { border-color: var(--border-default) !important; }
-main .border-gray-300 { border-color: rgba(148,148,215,0.26) !important; }
+/* ── Neutral Borders ─────────────────────────────────────────────────────── */
+main .border-gray-100 { border-color: var(--border-subtle)    !important; }
+main .border-gray-200 { border-color: var(--border-default)   !important; }
+main .border-gray-300 { border-color: rgba(148,148,215,0.26)  !important; }
+main .border-gray-400 { border-color: rgba(148,148,215,0.35)  !important; }
 main .divide-gray-100 > * + * { border-color: var(--border-subtle)  !important; }
 main .divide-gray-200 > * + * { border-color: var(--border-default) !important; }
+main .divide-gray-300 > * + * { border-color: rgba(148,148,215,0.26) !important; }
 
-/* Text */
+/* ── Neutral Text ────────────────────────────────────────────────────────── */
 main .text-gray-900 { color: var(--text-primary)   !important; }
-main .text-gray-800 { color: #d0d0ec               !important; }
-main .text-gray-700 { color: #b8b8d8               !important; }
-main .text-gray-600 { color: #a0a0c4               !important; }
+main .text-gray-800 { color: #d8d8f0               !important; }
+main .text-gray-700 { color: #c0c0e0               !important; }
+main .text-gray-600 { color: #a8a8cc               !important; }
 main .text-gray-500 { color: var(--text-secondary) !important; }
-main .text-gray-400 { color: #787898               !important; }
+main .text-gray-400 { color: #7878a0               !important; }
 main .text-gray-300 { color: var(--text-muted)     !important; }
 
-/* Hover backgrounds */
-main .hover\:bg-gray-50:hover  { background-color: rgba(255,255,255,0.04) !important; }
-main .hover\:bg-gray-100:hover { background-color: rgba(255,255,255,0.07) !important; }
+/* ── Hover Backgrounds ───────────────────────────────────────────────────── */
+main .hover\:bg-gray-50:hover   { background-color: rgba(255,255,255,0.04) !important; }
+main .hover\:bg-gray-100:hover  { background-color: rgba(255,255,255,0.07) !important; }
+main .hover\:bg-gray-200:hover  { background-color: rgba(255,255,255,0.10) !important; }
+
+/* ── Hover Text ──────────────────────────────────────────────────────────── */
 main .hover\:text-gray-900:hover { color: var(--text-primary)   !important; }
+main .hover\:text-gray-700:hover { color: #c0c0e0               !important; }
+main .hover\:text-gray-600:hover { color: #a8a8cc               !important; }
 main .hover\:text-gray-500:hover { color: var(--text-secondary) !important; }
-main .hover\:border-gray-200:hover { border-color: var(--border-default) !important; }
 
-/* Status badge backgrounds → translucent tint */
-main .bg-green-100  { background-color: rgba(6,   199,  85,  0.14) !important; }
-main .bg-blue-100   { background-color: rgba(59,  130,  246, 0.14) !important; }
-main .bg-yellow-100 { background-color: rgba(245, 158,  11,  0.14) !important; }
-main .bg-red-100    { background-color: rgba(239,  68,  68,  0.14) !important; }
-main .bg-purple-100 { background-color: rgba(139,  92,  246, 0.14) !important; }
-main .bg-indigo-100 { background-color: rgba(99,  102,  241, 0.14) !important; }
-main .bg-pink-100   { background-color: rgba(236,  72,  153, 0.14) !important; }
-main .bg-orange-100 { background-color: rgba(249, 115,  22,  0.14) !important; }
+/* ── Hover Borders ───────────────────────────────────────────────────────── */
+main .hover\:border-gray-200:hover { border-color: var(--border-default)  !important; }
+main .hover\:border-gray-300:hover { border-color: rgba(148,148,215,0.35) !important; }
 
-/* Status badge text → brighter on dark */
+/* ── Color Badge Backgrounds (-100) ─────────────────────────────────────── */
+main .bg-green-100  { background-color: rgba(6,   199,  85,  0.15) !important; }
+main .bg-blue-100   { background-color: rgba(59,  130,  246, 0.15) !important; }
+main .bg-yellow-100 { background-color: rgba(245, 158,  11,  0.15) !important; }
+main .bg-red-100    { background-color: rgba(239,  68,  68,  0.15) !important; }
+main .bg-purple-100 { background-color: rgba(139,  92,  246, 0.15) !important; }
+main .bg-indigo-100 { background-color: rgba(99,  102,  241, 0.15) !important; }
+main .bg-pink-100   { background-color: rgba(236,  72,  153, 0.15) !important; }
+main .bg-orange-100 { background-color: rgba(249, 115,  22,  0.15) !important; }
+
+/* ── Color Light Backgrounds (-50) ──────────────────────────────────────── */
+main .bg-green-50   { background-color: rgba(6,   199,  85,  0.10) !important; }
+main .bg-blue-50    { background-color: rgba(59,  130,  246, 0.10) !important; }
+main .bg-yellow-50  { background-color: rgba(245, 158,  11,  0.10) !important; }
+main .bg-red-50     { background-color: rgba(239,  68,  68,  0.10) !important; }
+main .bg-purple-50  { background-color: rgba(139,  92,  246, 0.10) !important; }
+main .bg-indigo-50  { background-color: rgba(99,  102,  241, 0.10) !important; }
+main .bg-orange-50  { background-color: rgba(249, 115,  22,  0.10) !important; }
+
+/* ── Hover Color Backgrounds ─────────────────────────────────────────────── */
+main .hover\:bg-green-50:hover   { background-color: rgba(6,  199, 85,  0.14) !important; }
+main .hover\:bg-red-50:hover     { background-color: rgba(239, 68, 68,  0.14) !important; }
+main .hover\:bg-yellow-50:hover  { background-color: rgba(245,158, 11,  0.14) !important; }
+main .hover\:bg-blue-50:hover    { background-color: rgba(59, 130,246,  0.14) !important; }
+main .hover\:bg-green-100:hover  { background-color: rgba(6,  199, 85,  0.20) !important; }
+main .hover\:bg-red-100:hover    { background-color: rgba(239, 68, 68,  0.20) !important; }
+main .hover\:bg-yellow-100:hover { background-color: rgba(245,158, 11,  0.20) !important; }
+main .hover\:bg-blue-100:hover   { background-color: rgba(59, 130,246,  0.20) !important; }
+
+/* ── Color Text ──────────────────────────────────────────────────────────── */
+main .text-green-900  { color: #86efac !important; }
+main .text-green-800  { color: #86efac !important; }
 main .text-green-700  { color: #4ade80 !important; }
 main .text-green-600  { color: #34d058 !important; }
-main .text-green-800  { color: #86efac !important; }
+main .text-green-500  { color: #22c55e !important; }
+main .text-blue-900   { color: #93c5fd !important; }
+main .text-blue-800   { color: #93c5fd !important; }
 main .text-blue-700   { color: #60a5fa !important; }
 main .text-blue-600   { color: #3b9efa !important; }
+main .text-blue-500   { color: #3b82f6 !important; }
+main .text-yellow-900 { color: #fde68a !important; }
+main .text-yellow-800 { color: #fde68a !important; }
 main .text-yellow-700 { color: #fbbf24 !important; }
 main .text-yellow-600 { color: #f59e0b !important; }
+main .text-red-900    { color: #fca5a5 !important; }
+main .text-red-800    { color: #fca5a5 !important; }
 main .text-red-700    { color: #f87171 !important; }
 main .text-red-600    { color: #ef5350 !important; }
-main .text-red-400    { color: #fc8181 !important; }
 main .text-red-500    { color: #f87171 !important; }
+main .text-red-400    { color: #fc8181 !important; }
+main .text-purple-800 { color: #c4b5fd !important; }
 main .text-purple-700 { color: #a78bfa !important; }
 main .text-purple-600 { color: #9c72f9 !important; }
 main .text-indigo-700 { color: #818cf8 !important; }
+main .text-indigo-600 { color: #6366f1 !important; }
 main .text-orange-700 { color: #fb923c !important; }
+main .text-orange-600 { color: #f97316 !important; }
+main .text-pink-700   { color: #f472b6 !important; }
 
-/* Solid action buttons — keep but slightly richer */
+/* ── Solid Action Buttons ────────────────────────────────────────────────── */
 main .bg-green-600  { background-color: #059644 !important; }
+main .bg-green-500  { background-color: #06C755 !important; }
 main .bg-blue-600   { background-color: #2563eb !important; }
 main .bg-red-600    { background-color: #dc2626 !important; }
 main .hover\:bg-green-700:hover { background-color: #047a37 !important; }
+main .hover\:bg-green-600:hover { background-color: #059644 !important; }
 main .hover\:bg-blue-700:hover  { background-color: #1d4ed8 !important; }
 main .hover\:bg-red-700:hover   { background-color: #b91c1c !important; }
 
-/* Form elements */
+/* ── Form Elements ───────────────────────────────────────────────────────── */
 main input:not([type="checkbox"]):not([type="radio"]),
 main textarea,
 main select {
@@ -143,13 +192,37 @@ main select:focus {
 main input::placeholder,
 main textarea::placeholder { color: var(--text-muted) !important; }
 
-/* Tables */
-main table  { border-color: var(--border-subtle) !important; }
-main th     { background-color: var(--surface-raised) !important; color: var(--text-secondary) !important; border-color: var(--border-subtle) !important; }
-main td     { border-color: var(--border-subtle) !important; }
+/* ── Code / Pre blocks ───────────────────────────────────────────────────── */
+main code {
+  background-color: rgba(148, 148, 215, 0.12) !important;
+  color: #c4b5fd !important;
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+main pre { background-color: var(--surface-raised) !important; }
 
-/* Shadow helpers sometimes used on white panels */
+/* ── Tables ──────────────────────────────────────────────────────────────── */
+main table  { border-color: var(--border-subtle) !important; }
+main th     {
+  background-color: var(--surface-raised) !important;
+  color: var(--text-secondary) !important;
+  border-color: var(--border-subtle) !important;
+}
+main td     { border-color: var(--border-subtle) !important; }
+main tr     { color: var(--text-primary) !important; }
+
+/* ── Shadows ─────────────────────────────────────────────────────────────── */
 main .shadow-sm  { box-shadow: 0 2px 12px rgba(0,0,0,0.35) !important; }
 main .shadow     { box-shadow: 0 4px 20px rgba(0,0,0,0.40) !important; }
 main .shadow-lg  { box-shadow: 0 8px 32px rgba(0,0,0,0.50) !important; }
 main .shadow-xl  { box-shadow: 0 12px 40px rgba(0,0,0,0.55) !important; }
+
+/* ── Ring / Focus colors ─────────────────────────────────────────────────── */
+main .ring-green-500 { --tw-ring-color: rgba(6,199,85,0.5) !important; }
+main .focus\:ring-green-500:focus { --tw-ring-color: rgba(6,199,85,0.4) !important; }
+main .focus\:ring-blue-500:focus  { --tw-ring-color: rgba(59,130,246,0.4) !important; }
+
+/* ── Special: selected/active states ────────────────────────────────────── */
+/* Checkbox event-type labels (webhooks page) */
+main .border-green-500.bg-green-50 { border-color: #4ade80 !important; }
+/* Selected list rows (bg-green-50 already covered above) */
