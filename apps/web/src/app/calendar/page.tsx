@@ -153,16 +153,16 @@ function SettingsTab({ setError, setSuccess }: { setError: (s: string) => void; 
         const s = res.data
         setClientEmail(s.googleClientEmail ?? '')
         setCalendarId(s.googleCalendarId ?? '')
-        setHasKey(s.googlePrivateKeySet)
-        setHoursStart(s.businessHoursStart)
-        setHoursEnd(s.businessHoursEnd)
-        setSlotDuration(s.slotDuration)
-        setClosedDays(s.closedDays)
-        setClosedDates(s.closedDates.join(', '))
-        setBookingFields(s.bookingFields)
-        setReplyEnabled(s.bookingReplyEnabled)
+        setHasKey(!!s.googlePrivateKeySet)
+        setHoursStart(s.businessHoursStart ?? '09:00')
+        setHoursEnd(s.businessHoursEnd ?? '18:00')
+        setSlotDuration(s.slotDuration ?? 30)
+        setClosedDays(Array.isArray(s.closedDays) ? s.closedDays : [])
+        setClosedDates(Array.isArray(s.closedDates) ? s.closedDates.join(', ') : '')
+        setBookingFields(Array.isArray(s.bookingFields) ? s.bookingFields : [])
+        setReplyEnabled(!!s.bookingReplyEnabled)
         setReplyContent(s.bookingReplyContent ?? '')
-        setMaxDays(s.maxAdvanceDays)
+        setMaxDays(s.maxAdvanceDays ?? 30)
       }
     } catch { setError('設定の読み込みに失敗しました') }
     finally { setLoading(false) }

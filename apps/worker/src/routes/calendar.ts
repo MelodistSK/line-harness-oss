@@ -67,8 +67,18 @@ calendar.get('/api/calendar/settings', async (c) => {
     return c.json({
       success: true,
       data: {
-        ...settings,
-        google_private_key: maskPrivateKey(settings.google_private_key),
+        googleClientEmail: settings.google_client_email,
+        googlePrivateKeySet: !!settings.google_private_key,
+        googleCalendarId: settings.google_calendar_id,
+        businessHoursStart: settings.business_hours_start,
+        businessHoursEnd: settings.business_hours_end,
+        slotDuration: settings.slot_duration,
+        closedDays: JSON.parse(settings.closed_days || '[]'),
+        closedDates: JSON.parse(settings.closed_dates || '[]'),
+        bookingFields: JSON.parse(settings.booking_fields || '[]'),
+        bookingReplyEnabled: !!settings.booking_reply_enabled,
+        bookingReplyContent: settings.booking_reply_content,
+        maxAdvanceDays: settings.max_advance_days,
       },
     });
   } catch (err) {
