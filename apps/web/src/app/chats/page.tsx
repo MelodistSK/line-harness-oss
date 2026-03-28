@@ -233,7 +233,6 @@ function ChatComposer({ onSend, sending }: { onSend: (msgType: string, content: 
   const [selectedFormId, setSelectedFormId] = useState('')
   const [templatesList, setTemplatesList] = useState<TemplateData[]>([])
   const [showTemplateModal, setShowTemplateModal] = useState(false)
-  const [expanded, setExpanded] = useState(false)
 
   useEffect(() => { api.forms.list().then(r => { if (r.success) setFormsList(r.data) }).catch(() => {}) }, [])
   useEffect(() => { if (showTemplateModal) api.templates.list().then(r => { if (r.success) setTemplatesList(r.data) }).catch(() => {}) }, [showTemplateModal])
@@ -259,7 +258,6 @@ function ChatComposer({ onSend, sending }: { onSend: (msgType: string, content: 
     setCarouselCards([{ title: '', text: '', imageUrl: '', buttons: [] }])
     setSelectedFormId('')
     setMsgType('text')
-    setExpanded(false)
   }
 
   const handleInsertTemplate = (tpl: TemplateData) => {
@@ -269,40 +267,8 @@ function ChatComposer({ onSend, sending }: { onSend: (msgType: string, content: 
       try { setCarouselCards(JSON.parse(tpl.messageContent).cards ?? []) } catch {}
     }
     setShowTemplateModal(false)
-    setExpanded(true)
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey && msgType === 'text' && !expanded) {
-      e.preventDefault()
-      handleSend()
-    }
-  }
-
-  // Simple text mode (collapsed)
-  if (!expanded && msgType === 'text') {
-    return (
-      <div className="px-4 py-3 border-t border-gray-200">
-        <div className="flex items-center gap-2 mb-2">
-          <button onClick={() => setExpanded(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
-            種別切替
-          </button>
-          <button onClick={() => setShowTemplateModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-            テンプレート
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          <input type="text" value={content} onChange={e => setContent(e.target.value)} onKeyDown={handleKeyDown} placeholder="メッセージを入力..." className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-green-500" />
-          <button onClick={handleSend} disabled={sending || !content.trim()} className="px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50" style={{ backgroundColor: '#06C755' }}>{sending ? '...' : '送信'}</button>
-        </div>
-        {showTemplateModal && <TemplateModal templates={templatesList} onSelect={handleInsertTemplate} onClose={() => setShowTemplateModal(false)} />}
-      </div>
-    )
-  }
-
-  // Expanded mode (all message types)
   return (
     <div className="border-t border-gray-200 px-4 py-3 space-y-2">
       {/* Type tabs */}
@@ -314,7 +280,6 @@ function ChatComposer({ onSend, sending }: { onSend: (msgType: string, content: 
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
           テンプレート
         </button>
-        <button onClick={() => { setExpanded(false); setMsgType('text') }} className="ml-auto text-xs text-gray-400 hover:text-gray-600 transition-colors">折りたたむ</button>
       </div>
 
       {/* Content area */}
