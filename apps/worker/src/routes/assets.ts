@@ -17,6 +17,12 @@ const MIME_TYPES: Record<string, string> = {
 const ALLOWED_EXTENSIONS = new Set(Object.keys(MIME_TYPES));
 const MAX_SIZE = 100 * 1024 * 1024; // 100 MB (R2 supports up to 5 GB per object)
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+  'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Accept-Ranges',
+};
+
 // POST /api/assets/upload — upload image or video (auth required)
 assets.post('/api/assets/upload', async (c) => {
   try {
@@ -93,6 +99,11 @@ assets.post('/api/assets/upload', async (c) => {
   }
 });
 
+// OPTIONS /assets/:filename — CORS preflight
+assets.options('/assets/:filename', (c) => {
+  return new Response(null, { status: 204, headers: CORS_HEADERS });
+});
+
 // GET /assets/:filename — serve file publicly (no auth, Range request supported)
 assets.get('/assets/:filename', async (c) => {
   try {
@@ -115,6 +126,7 @@ assets.get('/assets/:filename', async (c) => {
           return new Response(obj.body, {
             status: 206,
             headers: {
+              ...CORS_HEADERS,
               'Content-Type': mime,
               'Content-Range': `bytes ${start}-${end}/${totalSize}`,
               'Content-Length': String(end - start + 1),
@@ -130,6 +142,7 @@ assets.get('/assets/:filename', async (c) => {
       if (!obj) return c.json({ success: false, error: 'Not found' }, 404);
       return new Response(obj.body, {
         headers: {
+          ...CORS_HEADERS,
           'Content-Type': mime,
           'Content-Length': String(totalSize),
           'Accept-Ranges': 'bytes',
@@ -158,6 +171,7 @@ assets.get('/assets/:filename', async (c) => {
           return new Response(slice, {
             status: 206,
             headers: {
+              ...CORS_HEADERS,
               'Content-Type': mime,
               'Content-Range': `bytes ${start}-${end}/${totalSize}`,
               'Content-Length': String(slice.byteLength),
@@ -170,6 +184,7 @@ assets.get('/assets/:filename', async (c) => {
 
       return new Response(buf, {
         headers: {
+          ...CORS_HEADERS,
           'Content-Type': mime,
           'Content-Length': String(totalSize),
           'Accept-Ranges': 'bytes',

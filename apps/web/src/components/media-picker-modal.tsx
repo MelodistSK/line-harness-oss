@@ -116,6 +116,7 @@ export default function MediaPickerModal({ open, onClose, onSelect, accept = 'al
                       preload="metadata"
                       muted
                       playsInline
+                      crossOrigin="anonymous"
                       className="w-full h-full object-cover"
                       onMouseEnter={e => (e.target as HTMLVideoElement).play().catch(() => {})}
                       onMouseLeave={e => { const v = e.target as HTMLVideoElement; v.pause(); v.currentTime = 0 }}
