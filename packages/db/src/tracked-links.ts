@@ -66,6 +66,24 @@ export async function createTrackedLink(
   return (await getTrackedLinkById(db, id))!;
 }
 
+export async function updateTrackedLink(
+  db: D1Database,
+  id: string,
+  data: { name?: string; originalUrl?: string; tagId?: string | null; scenarioId?: string | null },
+): Promise<TrackedLink | null> {
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  if (data.name !== undefined) { sets.push('name = ?'); values.push(data.name); }
+  if (data.originalUrl !== undefined) { sets.push('original_url = ?'); values.push(data.originalUrl); }
+  if (data.tagId !== undefined) { sets.push('tag_id = ?'); values.push(data.tagId); }
+  if (data.scenarioId !== undefined) { sets.push('scenario_id = ?'); values.push(data.scenarioId); }
+  if (sets.length === 0) return null;
+  values.push(id);
+  await db.prepare(`UPDATE tracked_links SET ${sets.join(', ')} WHERE id = ?`).bind(...values).run();
+  const result = await db.prepare('SELECT * FROM tracked_links WHERE id = ?').bind(id).first<TrackedLink>();
+  return result ?? null;
+}
+
 export async function deleteTrackedLink(db: D1Database, id: string): Promise<void> {
   await db.prepare(`DELETE FROM tracked_links WHERE id = ?`).bind(id).run();
 }

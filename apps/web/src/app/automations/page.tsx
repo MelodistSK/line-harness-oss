@@ -95,10 +95,14 @@ export default function AutomationsPage() {
   const [automations, setAutomations] = useState<Automation[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [showCreate, setShowCreate] = useState(false)
+
+  // Editing state: null = closed, 'new' = create, Automation object = edit existing
+  const [editingAutomation, setEditingAutomation] = useState<Automation | 'new' | null>(null)
   const [form, setForm] = useState<CreateFormState>({ ...initialForm })
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
+
+  const isEditingExisting = editingAutomation !== null && editingAutomation !== 'new'
 
   const loadAutomations = useCallback(async () => {
     setLoading(true)
@@ -121,7 +125,7 @@ export default function AutomationsPage() {
     loadAutomations()
   }, [loadAutomations])
 
-  const handleCreate = async () => {
+  const handleSave = async () => {
     if (!form.name.trim()) {
       setFormError('ルール名を入力してください')
       return
@@ -145,26 +149,67 @@ export default function AutomationsPage() {
     setSaving(true)
     setFormError('')
     try {
-      const res = await api.automations.create({
+      const data = {
         name: form.name,
         description: form.description || null,
         eventType: form.eventType,
         actions: parsedActions,
         conditions: parsedConditions,
         priority: form.priority,
-      })
-      if (res.success) {
-        setShowCreate(false)
-        setForm({ ...initialForm })
-        loadAutomations()
+      }
+
+      if (isEditingExisting) {
+        // Update existing
+        const res = await api.automations.update((editingAutomation as Automation).id, data)
+        if (res.success) {
+          setEditingAutomation(null)
+          setForm({ ...initialForm })
+          loadAutomations()
+        } else {
+          setFormError(res.error)
+        }
       } else {
-        setFormError(res.error)
+        // Create new
+        const res = await api.automations.create(data)
+        if (res.success) {
+          setEditingAutomation(null)
+          setForm({ ...initialForm })
+          loadAutomations()
+        } else {
+          setFormError(res.error)
+        }
       }
     } catch {
-      setFormError('作成に失敗しました')
+      setFormError(isEditingExisting ? '更新に失敗しました' : '作成に失敗しました')
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleClickAutomation = (automation: Automation) => {
+    setEditingAutomation(automation)
+    setForm({
+      name: automation.name,
+      description: automation.description || '',
+      eventType: automation.eventType,
+      actionsJson: JSON.stringify(automation.actions, null, 2),
+      conditionsJson: JSON.stringify(automation.conditions, null, 2),
+      priority: automation.priority,
+    })
+    setFormError('')
+  }
+
+  const handleDuplicate = (automation: Automation) => {
+    setEditingAutomation('new')
+    setForm({
+      name: `${automation.name} (コピー)`,
+      description: automation.description || '',
+      eventType: automation.eventType,
+      actionsJson: JSON.stringify(automation.actions, null, 2),
+      conditionsJson: JSON.stringify(automation.conditions, null, 2),
+      priority: automation.priority,
+    })
+    setFormError('')
   }
 
   const handleToggleActive = async (id: string, current: boolean) => {
@@ -192,11 +237,21 @@ export default function AutomationsPage() {
         title="オートメーション"
         action={
           <button
-            onClick={() => setShowCreate(true)}
+            onClick={() => {
+              if (editingAutomation !== null) {
+                setEditingAutomation(null)
+                setForm({ ...initialForm })
+                setFormError('')
+              } else {
+                setEditingAutomation('new')
+                setForm({ ...initialForm })
+                setFormError('')
+              }
+            }}
             className="px-4 py-2 min-h-[44px] text-sm font-medium text-white rounded-lg transition-opacity hover:opacity-90"
             style={{ backgroundColor: '#06C755' }}
           >
-            + 新規ルール
+            {editingAutomation !== null ? 'キャンセル' : '+ 新規ルール'}
           </button>
         }
       />
@@ -208,10 +263,12 @@ export default function AutomationsPage() {
         </div>
       )}
 
-      {/* Create form */}
-      {showCreate && (
+      {/* Create/Edit form */}
+      {editingAutomation !== null && (
         <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-sm font-semibold text-gray-800 mb-4">新規オートメーションを作成</h2>
+          <h2 className="text-sm font-semibold text-gray-800 mb-4">
+            {isEditingExisting ? 'オートメーションを編集' : '新規オートメーションを作成'}
+          </h2>
           <div className="space-y-4 max-w-lg">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">ルール名 <span className="text-red-500">*</span></label>
@@ -279,15 +336,15 @@ export default function AutomationsPage() {
 
             <div className="flex gap-2">
               <button
-                onClick={handleCreate}
+                onClick={handleSave}
                 disabled={saving}
                 className="px-4 py-2 min-h-[44px] text-sm font-medium text-white rounded-lg disabled:opacity-50 transition-opacity"
                 style={{ backgroundColor: '#06C755' }}
               >
-                {saving ? '作成中...' : '作成'}
+                {saving ? (isEditingExisting ? '更新中...' : '作成中...') : (isEditingExisting ? '更新' : '作成')}
               </button>
               <button
-                onClick={() => { setShowCreate(false); setFormError('') }}
+                onClick={() => { setEditingAutomation(null); setForm({ ...initialForm }); setFormError('') }}
                 className="px-4 py-2 min-h-[44px] text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
               >
                 キャンセル
@@ -311,7 +368,7 @@ export default function AutomationsPage() {
             </div>
           ))}
         </div>
-      ) : automations.length === 0 && !showCreate ? (
+      ) : automations.length === 0 && editingAutomation === null ? (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
           <p className="text-gray-500">オートメーションがありません。「新規ルール」から作成してください。</p>
         </div>
@@ -320,24 +377,27 @@ export default function AutomationsPage() {
           {automations.map((automation) => (
             <div
               key={automation.id}
-              className="bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:shadow-md transition-shadow"
+              className="bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:shadow-md transition-shadow cursor-pointer"
+              onClick={() => handleClickAutomation(automation)}
             >
               {/* Header row */}
               <div className="flex items-start justify-between mb-2">
                 <h3 className="text-sm font-semibold text-gray-900 leading-tight">{automation.name}</h3>
-                <button
-                  onClick={() => handleToggleActive(automation.id, automation.isActive)}
-                  className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    automation.isActive ? 'bg-green-500' : 'bg-gray-300'
-                  }`}
-                  title={automation.isActive ? '有効 - クリックで無効化' : '無効 - クリックで有効化'}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                      automation.isActive ? 'translate-x-4' : 'translate-x-0'
+                <div onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={() => handleToggleActive(automation.id, automation.isActive)}
+                    className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      automation.isActive ? 'bg-green-500' : 'bg-gray-300'
                     }`}
-                  />
-                </button>
+                    title={automation.isActive ? '有効 - クリックで無効化' : '無効 - クリックで有効化'}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        automation.isActive ? 'translate-x-4' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
               </div>
 
               {/* Description */}
@@ -364,7 +424,14 @@ export default function AutomationsPage() {
               </div>
 
               {/* Actions */}
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
+                <button
+                  onClick={() => handleDuplicate(automation)}
+                  className="px-3 py-1 min-h-[44px] text-xs font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors border border-gray-200"
+                  title="このオートメーションを複製"
+                >
+                  複製
+                </button>
                 <button
                   onClick={() => handleDelete(automation.id)}
                   className="px-3 py-1 min-h-[44px] text-xs font-medium text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-md transition-colors"

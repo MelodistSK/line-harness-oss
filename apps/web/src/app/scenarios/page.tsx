@@ -36,7 +36,7 @@ const triggerOptions: { value: ScenarioTriggerType; label: string }[] = [
   { value: 'manual', label: '手動' },
 ]
 
-interface CreateFormState {
+interface FormState {
   name: string
   description: string
   triggerType: ScenarioTriggerType
@@ -44,19 +44,22 @@ interface CreateFormState {
   isActive: boolean
 }
 
+const emptyForm: FormState = {
+  name: '',
+  description: '',
+  triggerType: 'friend_add',
+  triggerTagId: '',
+  isActive: true,
+}
+
 export default function ScenariosPage() {
   const { selectedAccountId } = useAccount()
   const [scenarios, setScenarios] = useState<ScenarioWithCount[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [showCreate, setShowCreate] = useState(false)
-  const [form, setForm] = useState<CreateFormState>({
-    name: '',
-    description: '',
-    triggerType: 'friend_add',
-    triggerTagId: '',
-    isActive: true,
-  })
+  // null = closed, 'new' = creating, ScenarioWithCount = editing existing
+  const [editingScenario, setEditingScenario] = useState<ScenarioWithCount | null | 'new'>(null)
+  const [form, setForm] = useState<FormState>(emptyForm)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
 
@@ -81,7 +84,43 @@ export default function ScenariosPage() {
     loadScenarios()
   }, [loadScenarios])
 
-  const handleCreate = async () => {
+  const openNew = () => {
+    setEditingScenario('new')
+    setForm(emptyForm)
+    setFormError('')
+  }
+
+  const openEdit = (scenario: ScenarioWithCount) => {
+    setEditingScenario(scenario)
+    setForm({
+      name: scenario.name,
+      description: scenario.description ?? '',
+      triggerType: scenario.triggerType as ScenarioTriggerType,
+      triggerTagId: scenario.triggerTagId ?? '',
+      isActive: scenario.isActive,
+    })
+    setFormError('')
+  }
+
+  const openDuplicate = (scenario: ScenarioWithCount) => {
+    setEditingScenario('new')
+    setForm({
+      name: `${scenario.name} (コピー)`,
+      description: scenario.description ?? '',
+      triggerType: scenario.triggerType as ScenarioTriggerType,
+      triggerTagId: scenario.triggerTagId ?? '',
+      isActive: scenario.isActive,
+    })
+    setFormError('')
+  }
+
+  const closeForm = () => {
+    setEditingScenario(null)
+    setForm(emptyForm)
+    setFormError('')
+  }
+
+  const handleSave = async () => {
     if (!form.name.trim()) {
       setFormError('シナリオ名を入力してください')
       return
@@ -89,22 +128,27 @@ export default function ScenariosPage() {
     setSaving(true)
     setFormError('')
     try {
-      const res = await api.scenarios.create({
+      const payload = {
         name: form.name,
         description: form.description || null,
         triggerType: form.triggerType,
         triggerTagId: form.triggerTagId || null,
         isActive: form.isActive,
-      })
+      }
+
+      const isEditing = editingScenario !== null && editingScenario !== 'new'
+      const res = isEditing
+        ? await api.scenarios.update(editingScenario.id, payload)
+        : await api.scenarios.create(payload)
+
       if (res.success) {
-        setShowCreate(false)
-        setForm({ name: '', description: '', triggerType: 'friend_add', triggerTagId: '', isActive: true })
+        closeForm()
         loadScenarios()
       } else {
         setFormError(res.error)
       }
     } catch {
-      setFormError('作成に失敗しました')
+      setFormError(editingScenario !== 'new' && editingScenario !== null ? '更新に失敗しました' : '作成に失敗しました')
     } finally {
       setSaving(false)
     }
@@ -122,11 +166,20 @@ export default function ScenariosPage() {
   const handleDelete = async (id: string) => {
     try {
       await api.scenarios.delete(id)
+      // Close form if we're editing the deleted scenario
+      if (editingScenario !== null && editingScenario !== 'new' && editingScenario.id === id) {
+        closeForm()
+      }
       loadScenarios()
     } catch {
       setError('削除に失敗しました')
     }
   }
+
+  const isEditing = editingScenario !== null && editingScenario !== 'new'
+  const formTitle = isEditing ? 'シナリオ編集' : '新規シナリオを作成'
+  const saveLabel = isEditing ? '保存' : '作成'
+  const savingLabel = isEditing ? '保存中...' : '作成中...'
 
   return (
     <div>
@@ -134,7 +187,7 @@ export default function ScenariosPage() {
         title="シナリオ配信"
         action={
           <button
-            onClick={() => setShowCreate(true)}
+            onClick={openNew}
             className="px-4 py-2 min-h-[44px] text-sm font-medium text-white rounded-lg transition-opacity hover:opacity-90"
             style={{ backgroundColor: '#06C755' }}
           >
@@ -150,10 +203,10 @@ export default function ScenariosPage() {
         </div>
       )}
 
-      {/* Create form */}
-      {showCreate && (
+      {/* Create / Edit form */}
+      {editingScenario !== null && (
         <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-sm font-semibold text-gray-800 mb-4">新規シナリオを作成</h2>
+          <h2 className="text-sm font-semibold text-gray-800 mb-4">{formTitle}</h2>
           <div className="space-y-4 max-w-lg">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">シナリオ名 <span className="text-red-500">*</span></label>
@@ -195,22 +248,24 @@ export default function ScenariosPage() {
                 onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
                 className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
               />
-              <label htmlFor="isActive" className="text-sm text-gray-600">作成後すぐに有効にする</label>
+              <label htmlFor="isActive" className="text-sm text-gray-600">
+                {isEditing ? '有効にする' : '作成後すぐに有効にする'}
+              </label>
             </div>
 
             {formError && <p className="text-xs text-red-600">{formError}</p>}
 
             <div className="flex gap-2">
               <button
-                onClick={handleCreate}
+                onClick={handleSave}
                 disabled={saving}
                 className="px-4 py-2 min-h-[44px] text-sm font-medium text-white rounded-lg disabled:opacity-50 transition-opacity"
                 style={{ backgroundColor: '#06C755' }}
               >
-                {saving ? '作成中...' : '作成'}
+                {saving ? savingLabel : saveLabel}
               </button>
               <button
-                onClick={() => { setShowCreate(false); setFormError('') }}
+                onClick={closeForm}
                 className="px-4 py-2 min-h-[44px] text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
               >
                 キャンセル
@@ -239,6 +294,8 @@ export default function ScenariosPage() {
           scenarios={scenarios}
           onToggleActive={handleToggleActive}
           onDelete={handleDelete}
+          onEdit={openEdit}
+          onDuplicate={openDuplicate}
           loading={loading}
         />
       )}

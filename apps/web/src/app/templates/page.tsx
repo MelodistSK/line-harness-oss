@@ -9,6 +9,16 @@ import MediaUrlInput from '@/components/media-url-input'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+type TemplateItem = {
+  id: string
+  name: string
+  category: string
+  messageType: string
+  messageContent: string
+  createdAt: string
+  updatedAt: string
+}
+
 interface Template {
   id: string
   name: string
@@ -187,7 +197,7 @@ export default function TemplatesPage() {
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [showCreate, setShowCreate] = useState(false)
+  const [editingTemplate, setEditingTemplate] = useState<TemplateItem | null | 'new'>(null)
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
 
   const [form, setForm] = useState<CreateFormState>({ name: '', category: '', messageType: 'text', messageContent: '' })
@@ -234,7 +244,68 @@ export default function TemplatesPage() {
     return form.messageContent
   }
 
-  const handleCreate = async () => {
+  const resetForm = () => {
+    setForm({ name: '', category: '', messageType: 'text', messageContent: '' })
+    setCarouselCards([{ title: '', text: '', imageUrl: '', buttons: [] }])
+    setQuickReplyEnabled(false)
+    setQuickReplyItems([])
+    setSelectedFormId('')
+    setFormError('')
+  }
+
+  const openEdit = (template: TemplateItem) => {
+    setEditingTemplate(template)
+    setFormError('')
+    const msgType = template.messageType
+    setForm({
+      name: template.name,
+      category: template.category,
+      messageType: msgType,
+      messageContent: template.messageContent,
+    })
+    // For carousel type, parse messageContent to populate carouselCards
+    if (msgType === 'carousel') {
+      try {
+        const parsed = JSON.parse(template.messageContent)
+        if (parsed.cards && Array.isArray(parsed.cards)) {
+          setCarouselCards(parsed.cards)
+        } else {
+          setCarouselCards([{ title: '', text: '', imageUrl: '', buttons: [] }])
+        }
+      } catch {
+        setCarouselCards([{ title: '', text: '', imageUrl: '', buttons: [] }])
+      }
+    } else {
+      setCarouselCards([{ title: '', text: '', imageUrl: '', buttons: [] }])
+    }
+    // Parse quick reply from content
+    try {
+      const parsed = JSON.parse(template.messageContent)
+      if (parsed._quickReply && Array.isArray(parsed._quickReply)) {
+        setQuickReplyEnabled(true)
+        setQuickReplyItems(parsed._quickReply)
+      } else {
+        setQuickReplyEnabled(false)
+        setQuickReplyItems([])
+      }
+    } catch {
+      setQuickReplyEnabled(false)
+      setQuickReplyItems([])
+    }
+    setSelectedFormId('')
+  }
+
+  const handleDuplicate = (template: TemplateItem) => {
+    openEdit({
+      ...template,
+      id: '',
+      name: template.name + ' (コピー)',
+    })
+    // Override editingTemplate to 'new' since it has no id
+    setEditingTemplate({ ...template, id: '', name: template.name + ' (コピー)' })
+  }
+
+  const handleSave = async () => {
     if (!form.name.trim()) { setFormError('テンプレート名を入力してください'); return }
     if (!form.category.trim()) { setFormError('カテゴリを入力してください'); return }
     const content = getDisplayContent()
@@ -243,21 +314,21 @@ export default function TemplatesPage() {
     const finalContent = buildFinalContent(form.messageType, content, quickReplyEnabled ? quickReplyItems : [])
     setSaving(true)
     setFormError('')
+    const payload = { name: form.name, category: form.category, messageType: finalType, messageContent: finalContent }
+    const isUpdate = editingTemplate !== 'new' && editingTemplate !== null && editingTemplate.id
     try {
-      const res = await api.templates.create({ name: form.name, category: form.category, messageType: finalType, messageContent: finalContent })
+      const res = isUpdate
+        ? await api.templates.update(editingTemplate.id, payload)
+        : await api.templates.create(payload)
       if (res.success) {
-        setShowCreate(false)
-        setForm({ name: '', category: '', messageType: 'text', messageContent: '' })
-        setCarouselCards([{ title: '', text: '', imageUrl: '', buttons: [] }])
-        setQuickReplyEnabled(false)
-        setQuickReplyItems([])
-        setSelectedFormId('')
+        setEditingTemplate(null)
+        resetForm()
         load()
       } else {
         setFormError(res.error)
       }
     } catch {
-      setFormError('作成に失敗しました')
+      setFormError(isUpdate ? '更新に失敗しました' : '作成に失敗しました')
     } finally {
       setSaving(false)
     }
@@ -278,7 +349,7 @@ export default function TemplatesPage() {
       <Header
         title="テンプレート管理"
         action={
-          <button onClick={() => setShowCreate(true)} className="px-4 py-2 text-sm font-medium text-white rounded-lg transition-opacity hover:opacity-90" style={{ backgroundColor: '#06C755' }}>
+          <button onClick={() => { resetForm(); setEditingTemplate('new') }} className="px-4 py-2 text-sm font-medium text-white rounded-lg transition-opacity hover:opacity-90" style={{ backgroundColor: '#06C755' }}>
             + 新規テンプレート
           </button>
         }
@@ -302,10 +373,10 @@ export default function TemplatesPage() {
         </div>
       )}
 
-      {/* Create form */}
-      {showCreate && (
+      {/* Create / Edit form */}
+      {editingTemplate !== null && (
         <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-sm font-semibold text-gray-800 mb-4">新規テンプレートを作成</h2>
+          <h2 className="text-sm font-semibold text-gray-800 mb-4">{editingTemplate === 'new' || !editingTemplate.id ? '新規テンプレート' : 'テンプレート編集'}</h2>
           <div className="space-y-4 max-w-xl">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">テンプレート名 <span className="text-red-500">*</span></label>
@@ -423,10 +494,10 @@ export default function TemplatesPage() {
             {formError && <p className="text-xs text-red-600">{formError}</p>}
 
             <div className="flex gap-2">
-              <button onClick={handleCreate} disabled={saving} className="px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50" style={{ backgroundColor: '#06C755' }}>
-                {saving ? '作成中...' : '作成'}
+              <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50" style={{ backgroundColor: '#06C755' }}>
+                {saving ? '保存中...' : (editingTemplate === 'new' || !editingTemplate?.id ? '作成' : '更新')}
               </button>
-              <button onClick={() => { setShowCreate(false); setFormError('') }} className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg">
+              <button onClick={() => { setEditingTemplate(null); setFormError('') }} className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg">
                 キャンセル
               </button>
             </div>
@@ -448,7 +519,7 @@ export default function TemplatesPage() {
             </div>
           ))}
         </div>
-      ) : templates.length === 0 && !showCreate ? (
+      ) : templates.length === 0 && editingTemplate === null ? (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
           <p className="text-gray-500">テンプレートがありません。「新規テンプレート」から作成してください。</p>
         </div>
@@ -467,7 +538,7 @@ export default function TemplatesPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {templates.map(template => (
-                  <tr key={template.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={template.id} onClick={() => openEdit(template)} className="hover:bg-gray-50 transition-colors cursor-pointer">
                     <td className="px-4 py-3">
                       <p className="text-sm font-medium text-gray-900">{template.name}</p>
                       <p className="text-xs text-gray-400 mt-0.5 truncate max-w-xs">
@@ -479,7 +550,8 @@ export default function TemplatesPage() {
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">{messageTypeLabels[template.messageType] || template.messageType}</td>
                     <td className="px-4 py-3 text-sm text-gray-500">{formatDate(template.createdAt)}</td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                      <button onClick={() => handleDuplicate(template)} className="px-3 py-1 text-xs font-medium text-gray-500 hover:text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors mr-1">複製</button>
                       <button onClick={() => handleDelete(template.id)} className="px-3 py-1 text-xs font-medium text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-md transition-colors">削除</button>
                     </td>
                   </tr>

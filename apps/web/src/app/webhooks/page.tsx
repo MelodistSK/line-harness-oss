@@ -53,7 +53,10 @@ export default function WebhooksPage() {
   const [outgoing, setOutgoing] = useState<OutgoingWebhook[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [showCreate, setShowCreate] = useState(false)
+
+  // Editing states: null = closed, 'new' = create, object = edit existing
+  const [editingIn, setEditingIn] = useState<IncomingWebhook | 'new' | null>(null)
+  const [editingOut, setEditingOut] = useState<OutgoingWebhook | 'new' | null>(null)
 
   const [inForm, setInForm] = useState({ name: '', sourceType: '' })
   const [outForm, setOutForm] = useState({ name: '', url: '', eventTypes: [] as string[], secret: '' })
@@ -128,39 +131,103 @@ export default function WebhooksPage() {
     }
   }
 
-  const handleCreateIncoming = async (e: React.FormEvent) => {
+  const handleSaveIncoming = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!inForm.name) return
     try {
-      await api.webhooks.incoming.create({
-        name: inForm.name,
-        sourceType: inForm.sourceType || undefined,
-      })
+      if (editingIn && editingIn !== 'new' && editingIn.id) {
+        // Update existing
+        await api.webhooks.incoming.update(editingIn.id, {
+          name: inForm.name,
+          sourceType: inForm.sourceType || undefined,
+        })
+      } else {
+        // Create new
+        await api.webhooks.incoming.create({
+          name: inForm.name,
+          sourceType: inForm.sourceType || undefined,
+        })
+      }
       setInForm({ name: '', sourceType: '' })
-      setShowCreate(false)
+      setEditingIn(null)
       load()
     } catch {
-      setError('作成に失敗しました')
+      setError(editingIn && editingIn !== 'new' ? '更新に失敗しました' : '作成に失敗しました')
     }
   }
 
-  const handleCreateOutgoing = async (e: React.FormEvent) => {
+  const handleSaveOutgoing = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!outForm.name || !outForm.url) return
     try {
-      await api.webhooks.outgoing.create({
-        name: outForm.name,
-        url: outForm.url,
-        eventTypes: outForm.eventTypes,
-        secret: outForm.secret || undefined,
-      })
+      if (editingOut && editingOut !== 'new' && editingOut.id) {
+        // Update existing
+        await api.webhooks.outgoing.update(editingOut.id, {
+          name: outForm.name,
+          url: outForm.url,
+          eventTypes: outForm.eventTypes,
+        })
+      } else {
+        // Create new
+        await api.webhooks.outgoing.create({
+          name: outForm.name,
+          url: outForm.url,
+          eventTypes: outForm.eventTypes,
+          secret: outForm.secret || undefined,
+        })
+      }
       setOutForm({ name: '', url: '', eventTypes: [], secret: '' })
-      setShowCreate(false)
+      setEditingOut(null)
       load()
     } catch {
-      setError('作成に失敗しました')
+      setError(editingOut && editingOut !== 'new' ? '更新に失敗しました' : '作成に失敗しました')
     }
   }
+
+  const handleClickIncoming = (wh: IncomingWebhook) => {
+    setEditingIn(wh)
+    setInForm({ name: wh.name, sourceType: wh.sourceType || '' })
+  }
+
+  const handleDuplicateIncoming = (wh: IncomingWebhook) => {
+    setEditingIn('new')
+    setInForm({ name: `${wh.name} (コピー)`, sourceType: wh.sourceType || '' })
+  }
+
+  const handleClickOutgoing = (wh: OutgoingWebhook) => {
+    setEditingOut(wh)
+    setOutForm({ name: wh.name, url: wh.url, eventTypes: [...wh.eventTypes], secret: wh.secret || '' })
+  }
+
+  const handleDuplicateOutgoing = (wh: OutgoingWebhook) => {
+    setEditingOut('new')
+    setOutForm({ name: `${wh.name} (コピー)`, url: wh.url, eventTypes: [...wh.eventTypes], secret: wh.secret || '' })
+  }
+
+  const handleNewClick = () => {
+    if (tab === 'incoming') {
+      if (editingIn) {
+        setEditingIn(null)
+        setInForm({ name: '', sourceType: '' })
+      } else {
+        setEditingIn('new')
+        setInForm({ name: '', sourceType: '' })
+      }
+    } else {
+      if (editingOut) {
+        setEditingOut(null)
+        setOutForm({ name: '', url: '', eventTypes: [], secret: '' })
+      } else {
+        setEditingOut('new')
+        setOutForm({ name: '', url: '', eventTypes: [], secret: '' })
+      }
+    }
+  }
+
+  const showInForm = tab === 'incoming' && editingIn !== null
+  const showOutForm = tab === 'outgoing' && editingOut !== null
+  const isEditingInExisting = editingIn !== null && editingIn !== 'new'
+  const isEditingOutExisting = editingOut !== null && editingOut !== 'new'
 
   const endpointUrl = (id: string) =>
     `${typeof window !== 'undefined' ? window.location.origin : ''}/api/webhooks/incoming/${id}`
@@ -171,11 +238,13 @@ export default function WebhooksPage() {
         title="Webhook管理"
         action={
           <button
-            onClick={() => setShowCreate(!showCreate)}
+            onClick={handleNewClick}
             className="px-4 py-2 text-sm font-medium text-white rounded-lg transition-opacity hover:opacity-90"
             style={{ backgroundColor: '#06C755' }}
           >
-            {showCreate ? 'キャンセル' : '+ 新規Webhook'}
+            {(tab === 'incoming' && editingIn !== null) || (tab === 'outgoing' && editingOut !== null)
+              ? 'キャンセル'
+              : '+ 新規Webhook'}
           </button>
         }
       />
@@ -190,7 +259,7 @@ export default function WebhooksPage() {
       {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1 w-fit">
         <button
-          onClick={() => { setTab('incoming'); setShowCreate(false) }}
+          onClick={() => { setTab('incoming'); setEditingOut(null); setOutForm({ name: '', url: '', eventTypes: [], secret: '' }) }}
           className={`px-4 py-2 min-h-[44px] text-sm font-medium rounded-md transition-colors ${
             tab === 'incoming'
               ? 'bg-white text-gray-900 shadow-sm'
@@ -200,7 +269,7 @@ export default function WebhooksPage() {
           受信 (Incoming)
         </button>
         <button
-          onClick={() => { setTab('outgoing'); setShowCreate(false) }}
+          onClick={() => { setTab('outgoing'); setEditingIn(null); setInForm({ name: '', sourceType: '' }) }}
           className={`px-4 py-2 min-h-[44px] text-sm font-medium rounded-md transition-colors ${
             tab === 'outgoing'
               ? 'bg-white text-gray-900 shadow-sm'
@@ -211,10 +280,12 @@ export default function WebhooksPage() {
         </button>
       </div>
 
-      {/* Create forms */}
-      {showCreate && tab === 'incoming' && (
-        <form onSubmit={handleCreateIncoming} className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-          <h3 className="text-sm font-semibold text-gray-900 mb-4">受信Webhook作成</h3>
+      {/* Create/Edit forms */}
+      {showInForm && (
+        <form onSubmit={handleSaveIncoming} className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
+          <h3 className="text-sm font-semibold text-gray-900 mb-4">
+            {isEditingInExisting ? '受信Webhook編集' : '受信Webhook新規作成'}
+          </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">名前</label>
@@ -236,19 +307,30 @@ export default function WebhooksPage() {
               />
             </div>
           </div>
-          <button
-            type="submit"
-            className="mt-4 px-4 py-2 rounded-lg text-white text-sm font-medium"
-            style={{ backgroundColor: '#06C755' }}
-          >
-            作成
-          </button>
+          <div className="flex gap-2 mt-4">
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-lg text-white text-sm font-medium"
+              style={{ backgroundColor: '#06C755' }}
+            >
+              {isEditingInExisting ? '更新' : '作成'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setEditingIn(null); setInForm({ name: '', sourceType: '' }) }}
+              className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+            >
+              キャンセル
+            </button>
+          </div>
         </form>
       )}
 
-      {showCreate && tab === 'outgoing' && (
-        <form onSubmit={handleCreateOutgoing} className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-          <h3 className="text-sm font-semibold text-gray-900 mb-4">送信Webhook作成</h3>
+      {showOutForm && (
+        <form onSubmit={handleSaveOutgoing} className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
+          <h3 className="text-sm font-semibold text-gray-900 mb-4">
+            {isEditingOutExisting ? '送信Webhook編集' : '送信Webhook新規作成'}
+          </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">名前</label>
@@ -309,13 +391,22 @@ export default function WebhooksPage() {
               />
             </div>
           </div>
-          <button
-            type="submit"
-            className="mt-4 px-4 py-2 rounded-lg text-white text-sm font-medium"
-            style={{ backgroundColor: '#06C755' }}
-          >
-            作成
-          </button>
+          <div className="flex gap-2 mt-4">
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-lg text-white text-sm font-medium"
+              style={{ backgroundColor: '#06C755' }}
+            >
+              {isEditingOutExisting ? '更新' : '作成'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setEditingOut(null); setOutForm({ name: '', url: '', eventTypes: [], secret: '' }) }}
+              className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+            >
+              キャンセル
+            </button>
+          </div>
         </form>
       )}
 
@@ -335,7 +426,7 @@ export default function WebhooksPage() {
         </div>
       ) : tab === 'incoming' ? (
         /* Incoming table */
-        incoming.length === 0 && !showCreate ? (
+        incoming.length === 0 && !editingIn ? (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
             <p className="text-gray-500">受信Webhookがありません。「新規Webhook」から作成してください。</p>
           </div>
@@ -365,7 +456,11 @@ export default function WebhooksPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {incoming.map((wh) => (
-                  <tr key={wh.id} className="hover:bg-gray-50 transition-colors">
+                  <tr
+                    key={wh.id}
+                    className="hover:bg-gray-50 transition-colors cursor-pointer"
+                    onClick={() => handleClickIncoming(wh)}
+                  >
                     <td className="px-4 py-3 text-sm font-medium text-gray-900">{wh.name}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{wh.sourceType || '-'}</td>
                     <td className="px-4 py-3">
@@ -373,7 +468,7 @@ export default function WebhooksPage() {
                         {endpointUrl(wh.id)}
                       </code>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <button
                         onClick={() => handleToggleIncoming(wh.id, wh.isActive)}
                         className={`text-xs px-2 py-0.5 rounded-full ${
@@ -388,13 +483,22 @@ export default function WebhooksPage() {
                     <td className="px-4 py-3 text-sm text-gray-500">
                       {new Date(wh.createdAt).toLocaleDateString('ja-JP')}
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => handleDeleteIncoming(wh.id)}
-                        className="text-red-500 hover:text-red-700 text-sm"
-                      >
-                        削除
-                      </button>
+                    <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleDuplicateIncoming(wh)}
+                          className="px-3 py-1 min-h-[44px] text-xs font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors border border-gray-200"
+                          title="この受信Webhookを複製"
+                        >
+                          複製
+                        </button>
+                        <button
+                          onClick={() => handleDeleteIncoming(wh.id)}
+                          className="px-3 py-1 min-h-[44px] text-xs font-medium text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
+                        >
+                          削除
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -405,7 +509,7 @@ export default function WebhooksPage() {
         )
       ) : (
         /* Outgoing table */
-        outgoing.length === 0 && !showCreate ? (
+        outgoing.length === 0 && !editingOut ? (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
             <p className="text-gray-500">送信Webhookがありません。「新規Webhook」から作成してください。</p>
           </div>
@@ -435,7 +539,11 @@ export default function WebhooksPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {outgoing.map((wh) => (
-                  <tr key={wh.id} className="hover:bg-gray-50 transition-colors">
+                  <tr
+                    key={wh.id}
+                    className="hover:bg-gray-50 transition-colors cursor-pointer"
+                    onClick={() => handleClickOutgoing(wh)}
+                  >
                     <td className="px-4 py-3 text-sm font-medium text-gray-900">{wh.name}</td>
                     <td className="px-4 py-3">
                       <code className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-700 break-all">
@@ -454,7 +562,7 @@ export default function WebhooksPage() {
                         ))}
                       </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <button
                         onClick={() => handleToggleOutgoing(wh.id, wh.isActive)}
                         className={`text-xs px-2 py-0.5 rounded-full ${
@@ -469,13 +577,22 @@ export default function WebhooksPage() {
                     <td className="px-4 py-3 text-sm text-gray-500">
                       {new Date(wh.createdAt).toLocaleDateString('ja-JP')}
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => handleDeleteOutgoing(wh.id)}
-                        className="text-red-500 hover:text-red-700 text-sm"
-                      >
-                        削除
-                      </button>
+                    <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleDuplicateOutgoing(wh)}
+                          className="px-3 py-1 min-h-[44px] text-xs font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors border border-gray-200"
+                          title="この送信Webhookを複製"
+                        >
+                          複製
+                        </button>
+                        <button
+                          onClick={() => handleDeleteOutgoing(wh.id)}
+                          className="px-3 py-1 min-h-[44px] text-xs font-medium text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
+                        >
+                          削除
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

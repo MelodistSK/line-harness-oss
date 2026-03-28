@@ -105,6 +105,14 @@ export default function RichMenusPage() {
 
   useEffect(() => { loadAll() }, [loadAll])
 
+  const [duplicateSource, setDuplicateSource] = useState<RichMenu | null>(null)
+
+  const handleDuplicate = (menu: RichMenu) => {
+    setDuplicateSource(menu)
+    setTab('create')
+    clearMessages()
+  }
+
   return (
     <div>
       <Header title="リッチメニュー管理" description="リッチメニューの作成・管理・タグ別自動切替" />
@@ -114,7 +122,7 @@ export default function RichMenusPage() {
         {TABS.map((t) => (
           <button
             key={t.id}
-            onClick={() => { setTab(t.id); clearMessages() }}
+            onClick={() => { setTab(t.id); clearMessages(); if (t.id !== 'create') setDuplicateSource(null) }}
             className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
               tab === t.id
                 ? 'border-blue-600 text-blue-600'
@@ -129,8 +137,8 @@ export default function RichMenusPage() {
       {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>}
       {success && <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">{success}</div>}
 
-      {tab === 'list' && <MenuList menus={menus} onRefresh={loadAll} setError={setError} setSuccess={setSuccess} />}
-      {tab === 'create' && <MenuCreator menus={menus} onCreated={() => { loadAll(); setTab('list') }} setError={setError} setSuccess={setSuccess} />}
+      {tab === 'list' && <MenuList menus={menus} onRefresh={loadAll} setError={setError} setSuccess={setSuccess} onDuplicate={handleDuplicate} />}
+      {tab === 'create' && <MenuCreator key={duplicateSource?.richMenuId ?? 'new'} menus={menus} onCreated={() => { loadAll(); setTab('list'); setDuplicateSource(null) }} setError={setError} setSuccess={setSuccess} duplicateSource={duplicateSource} />}
       {tab === 'segments' && <SegmentManager menus={menus} tags={tags} mappings={mappings} onRefresh={loadAll} setError={setError} setSuccess={setSuccess} />}
       {tab === 'users' && <UserAssignment menus={menus} setError={setError} setSuccess={setSuccess} />}
     </div>
@@ -140,9 +148,9 @@ export default function RichMenusPage() {
 // ─── Tab 1: メニュー一覧 ────────────────────────────────────────────────────
 
 function MenuList({
-  menus, onRefresh, setError, setSuccess,
+  menus, onRefresh, setError, setSuccess, onDuplicate,
 }: {
-  menus: RichMenu[]; onRefresh: () => void; setError: (s: string) => void; setSuccess: (s: string) => void
+  menus: RichMenu[]; onRefresh: () => void; setError: (s: string) => void; setSuccess: (s: string) => void; onDuplicate: (menu: RichMenu) => void
 }) {
   const [busy, setBusy] = useState<string | null>(null)
 
@@ -210,6 +218,12 @@ function MenuList({
               </button>
             )}
             <button
+              onClick={() => onDuplicate(menu)}
+              className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
+            >
+              複製
+            </button>
+            <button
               onClick={() => handleDelete(menu.richMenuId)}
               disabled={busy === menu.richMenuId}
               className="px-3 py-1.5 text-xs font-medium text-red-500 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
@@ -271,15 +285,25 @@ function MenuPreview({ menu }: { menu: RichMenu }) {
 // ─── Tab 2: 新規作成 ────────────────────────────────────────────────────────
 
 function MenuCreator({
-  menus, onCreated, setError, setSuccess,
+  menus, onCreated, setError, setSuccess, duplicateSource,
 }: {
-  menus: RichMenu[]; onCreated: () => void; setError: (s: string) => void; setSuccess: (s: string) => void
+  menus: RichMenu[]; onCreated: () => void; setError: (s: string) => void; setSuccess: (s: string) => void; duplicateSource?: RichMenu | null
 }) {
-  const [name, setName] = useState('')
-  const [chatBarText, setChatBarText] = useState('メニュー')
-  const [sizeKey, setSizeKey] = useState<'large' | 'small'>('large')
-  const [presetIdx, setPresetIdx] = useState(2)
-  const [areaConfigs, setAreaConfigs] = useState<{ label: string; actionType: string; value: string }[]>([])
+  const initSize = duplicateSource ? (duplicateSource.size.height > 843 ? 'large' : 'small') as 'large' | 'small' : 'large'
+  const [name, setName] = useState(duplicateSource ? `${duplicateSource.name} (コピー)` : '')
+  const [chatBarText, setChatBarText] = useState(duplicateSource?.chatBarText ?? 'メニュー')
+  const [sizeKey, setSizeKey] = useState<'large' | 'small'>(initSize)
+  const [presetIdx, setPresetIdx] = useState(duplicateSource ? -1 : 2)
+  const [areaConfigs, setAreaConfigs] = useState<{ label: string; actionType: string; value: string }[]>(
+    duplicateSource
+      ? duplicateSource.areas.map((a, i) => ({
+          label: a.action.label || `エリア ${i + 1}`,
+          actionType: a.action.type === 'uri' ? 'uri' : a.action.type === 'postback' ? 'postback' : 'message',
+          value: a.action.uri || a.action.data || a.action.text || '',
+        }))
+      : []
+  )
+  const [customAreas] = useState(duplicateSource?.areas.map(a => ({ x: a.bounds.x, y: a.bounds.y, w: a.bounds.width, h: a.bounds.height })) ?? null)
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -290,7 +314,9 @@ function MenuCreator({
   const preset = presets[presetIdx] || presets[0]
 
   useEffect(() => {
-    setAreaConfigs(preset.areas.map((_, i) => ({ label: `エリア ${i + 1}`, actionType: 'message', value: '' })))
+    if (presetIdx >= 0) {
+      setAreaConfigs(preset.areas.map((_, i) => ({ label: `エリア ${i + 1}`, actionType: 'message', value: '' })))
+    }
   }, [preset.areas.length, presetIdx, sizeKey])
 
   const updateArea = (idx: number, field: string, val: string) => {
@@ -311,7 +337,8 @@ function MenuCreator({
     setCreating(true)
     setError('')
     try {
-      const areas: RichMenuArea[] = preset.areas.map((a, i) => {
+      const sourceAreas = customAreas ?? preset.areas
+      const areas: RichMenuArea[] = sourceAreas.map((a, i) => {
         const cfg = areaConfigs[i] || { actionType: 'message', value: '', label: '' }
         const action: RichMenuArea['action'] = cfg.actionType === 'uri'
           ? { type: 'uri', uri: cfg.value, label: cfg.label }
@@ -349,7 +376,7 @@ function MenuCreator({
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 max-w-3xl">
-      <h2 className="text-lg font-semibold text-gray-900 mb-4">リッチメニュー作成</h2>
+      <h2 className="text-lg font-semibold text-gray-900 mb-4">{duplicateSource ? 'リッチメニュー複製' : 'リッチメニュー作成'}</h2>
 
       <div className="grid grid-cols-2 gap-4 mb-4">
         <div>

@@ -99,6 +99,19 @@ export default function FormsPage() {
     setTab('builder')
   }
 
+  const openDuplicate = (form: Form) => {
+    const dup: Form = {
+      ...form,
+      id: '',
+      name: `${form.name} (コピー)`,
+      submitCount: 0,
+      createdAt: '',
+      updatedAt: '',
+    }
+    setEditingForm(dup)
+    setTab('builder')
+  }
+
   return (
     <div>
       <Header title="フォーム管理" description="GUIビルダーでフォームを作成・管理"
@@ -116,7 +129,7 @@ export default function FormsPage() {
         ))}
       </div>
 
-      {tab === 'list' && <FormList forms={forms} loading={loading} onEdit={openEdit} onDelete={handleDelete} />}
+      {tab === 'list' && <FormList forms={forms} loading={loading} onEdit={openEdit} onDuplicate={openDuplicate} onDelete={handleDelete} />}
       {tab === 'builder' && <FormBuilder form={editingForm} tags={tags} scenarios={scenarios} onSaved={() => { load(); setTab('list') }} setError={setError} setSuccess={setSuccess} />}
     </div>
   )
@@ -124,8 +137,8 @@ export default function FormsPage() {
 
 // ─── Form List ──────────────────────────────────────────────────────────────
 
-function FormList({ forms, loading, onEdit, onDelete }: {
-  forms: Form[]; loading: boolean; onEdit: (f: Form) => void; onDelete: (id: string) => void
+function FormList({ forms, loading, onEdit, onDuplicate, onDelete }: {
+  forms: Form[]; loading: boolean; onEdit: (f: Form) => void; onDuplicate: (f: Form) => void; onDelete: (id: string) => void
 }) {
   if (loading) return <div className="card p-8 text-center text-gray-400">読み込み中...</div>
   if (forms.length === 0) return <div className="card p-12 text-center"><p className="text-gray-400 text-lg mb-2">📝</p><p className="text-gray-500">フォームがありません</p></div>
@@ -150,6 +163,7 @@ function FormList({ forms, loading, onEdit, onDelete }: {
           </div>
           <div className="flex gap-2">
             <button onClick={() => onEdit(f)} className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100">編集</button>
+            <button onClick={() => onDuplicate(f)} className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-50 rounded-md hover:bg-gray-100 border border-gray-200">複製</button>
             <button onClick={() => onDelete(f.id)} className="px-3 py-1.5 text-xs font-medium text-red-500 bg-red-50 rounded-md hover:bg-red-100">削除</button>
           </div>
         </div>
@@ -261,10 +275,11 @@ function FormBuilder({ form, tags, scenarios, onSaved, setError, setSuccess }: {
         kintoneAppId: kintoneAppId || null, kintoneApiToken: kintoneApiToken || null,
         kintoneFieldMapping: Object.keys(kintoneFieldMapping).length > 0 ? kintoneFieldMapping : null,
       }
-      const url = form ? `/api/forms/${form.id}` : '/api/forms'
-      const method = form ? 'PUT' : 'POST'
+      const isUpdate = form && form.id
+      const url = isUpdate ? `/api/forms/${form.id}` : '/api/forms'
+      const method = isUpdate ? 'PUT' : 'POST'
       const res = await fetchApi<{ success: boolean; error?: string }>(url, { method, body: JSON.stringify(payload) })
-      if (res.success) { setSuccess(form ? 'フォームを更新しました' : 'フォームを作成しました'); onSaved() }
+      if (res.success) { setSuccess(isUpdate ? 'フォームを更新しました' : 'フォームを作成しました'); onSaved() }
       else setError(res.error || '保存に失敗しました')
     } catch { setError('保存に失敗しました') }
     finally { setSaving(false) }
@@ -534,7 +549,7 @@ function FormBuilder({ form, tags, scenarios, onSaved, setError, setSuccess }: {
 
         <button onClick={handleSave} disabled={saving || !name.trim()}
           className="w-full py-3 text-sm font-medium text-white rounded-xl disabled:opacity-50 transition-opacity" style={{ backgroundColor: '#06C755' }}>
-          {saving ? '保存中...' : form ? 'フォームを更新' : 'フォームを作成'}
+          {saving ? '保存中...' : (form && form.id) ? 'フォームを更新' : 'フォームを作成'}
         </button>
       </div>
     </div>

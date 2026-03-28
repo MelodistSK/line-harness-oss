@@ -37,7 +37,7 @@ export default function TagsPage() {
   const [tags, setTags] = useState<TagWithCount[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [showCreate, setShowCreate] = useState(false)
+  const [editingTag, setEditingTag] = useState<TagWithCount | 'new' | null>(null)
   const [form, setForm] = useState({ name: '', color: '#06C755' })
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
@@ -68,21 +68,42 @@ export default function TagsPage() {
 
   useEffect(() => { load() }, [load])
 
-  const handleCreate = async () => {
+  const openCreate = () => {
+    setEditingTag('new')
+    setForm({ name: '', color: '#06C755' })
+    setFormError('')
+  }
+
+  const openEdit = (tag: TagWithCount) => {
+    setEditingTag(tag)
+    setForm({ name: tag.name, color: tag.color || '#06C755' })
+    setFormError('')
+  }
+
+  const openDuplicate = (tag: TagWithCount) => {
+    setEditingTag('new')
+    setForm({ name: tag.name + ' (コピー)', color: tag.color || '#06C755' })
+    setFormError('')
+  }
+
+  const handleSave = async () => {
     if (!form.name.trim()) { setFormError('タグ名を入力してください'); return }
     setSaving(true)
     setFormError('')
     try {
-      const res = await api.tags.create({ name: form.name, color: form.color })
+      const isEditing = editingTag !== 'new' && editingTag !== null
+      const res = isEditing
+        ? await api.tags.update(editingTag.id, { name: form.name, color: form.color })
+        : await api.tags.create({ name: form.name, color: form.color })
       if (res.success) {
-        setShowCreate(false)
+        setEditingTag(null)
         setForm({ name: '', color: '#06C755' })
         load()
       } else {
         setFormError(res.error)
       }
     } catch {
-      setFormError('作成に失敗しました')
+      setFormError(editingTag !== 'new' && editingTag !== null ? '更新に失敗しました' : '作成に失敗しました')
     } finally {
       setSaving(false)
     }
@@ -98,13 +119,15 @@ export default function TagsPage() {
     }
   }
 
+  const isEditing = editingTag !== null && editingTag !== 'new'
+
   return (
     <div>
       <Header
         title="タグ管理"
         action={
           <button
-            onClick={() => setShowCreate(true)}
+            onClick={openCreate}
             className="px-4 py-2 text-sm font-medium text-white rounded-lg transition-opacity hover:opacity-90"
             style={{ backgroundColor: '#06C755' }}
           >
@@ -117,9 +140,11 @@ export default function TagsPage() {
         <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>
       )}
 
-      {showCreate && (
+      {editingTag !== null && (
         <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-sm font-semibold text-gray-800 mb-4">新規タグを作成</h2>
+          <h2 className="text-sm font-semibold text-gray-800 mb-4">
+            {isEditing ? 'タグを編集' : '新規タグを作成'}
+          </h2>
           <div className="space-y-4 max-w-lg">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">タグ名 <span className="text-red-500">*</span></label>
@@ -148,15 +173,15 @@ export default function TagsPage() {
             {formError && <p className="text-xs text-red-600">{formError}</p>}
             <div className="flex gap-2">
               <button
-                onClick={handleCreate}
+                onClick={handleSave}
                 disabled={saving}
                 className="px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 transition-opacity"
                 style={{ backgroundColor: '#06C755' }}
               >
-                {saving ? '作成中...' : '作成'}
+                {saving ? (isEditing ? '更新中...' : '作成中...') : (isEditing ? '更新' : '作成')}
               </button>
               <button
-                onClick={() => { setShowCreate(false); setFormError('') }}
+                onClick={() => { setEditingTag(null); setFormError('') }}
                 className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
               >
                 キャンセル
@@ -178,7 +203,7 @@ export default function TagsPage() {
             </div>
           ))}
         </div>
-      ) : tags.length === 0 && !showCreate ? (
+      ) : tags.length === 0 && editingTag === null ? (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
           <p className="text-gray-500">タグがありません。「新規タグ」から作成してください。</p>
         </div>
@@ -196,7 +221,11 @@ export default function TagsPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {tags.map((tag) => (
-                  <tr key={tag.id} className="hover:bg-gray-50 transition-colors">
+                  <tr
+                    key={tag.id}
+                    className="hover:bg-gray-50 transition-colors cursor-pointer"
+                    onClick={() => openEdit(tag)}
+                  >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: tag.color || '#06C755' }} />
@@ -208,12 +237,20 @@ export default function TagsPage() {
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-500">{formatDate(tag.createdAt)}</td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => handleDelete(tag.id)}
-                        className="px-3 py-1 text-xs font-medium text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
-                      >
-                        削除
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openDuplicate(tag) }}
+                          className="px-3 py-1 text-xs font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
+                        >
+                          複製
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDelete(tag.id) }}
+                          className="px-3 py-1 text-xs font-medium text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
+                        >
+                          削除
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

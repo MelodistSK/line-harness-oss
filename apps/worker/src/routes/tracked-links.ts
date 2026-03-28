@@ -3,6 +3,7 @@ import {
   getTrackedLinks,
   getTrackedLinkById,
   createTrackedLink,
+  updateTrackedLink,
   deleteTrackedLink,
   recordLinkClick,
   getLinkClicks,
@@ -100,6 +101,21 @@ trackedLinks.post('/api/tracked-links', async (c) => {
     return c.json({ success: true, data: serializeTrackedLink(link, base) }, 201);
   } catch (err) {
     console.error('POST /api/tracked-links error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+// PUT /api/tracked-links/:id - update
+trackedLinks.put('/api/tracked-links/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json<{ name?: string; originalUrl?: string; tagId?: string | null; scenarioId?: string | null }>();
+    const updated = await updateTrackedLink(c.env.DB, id, body);
+    if (!updated) return c.json({ success: false, error: 'Tracked link not found' }, 404);
+    const base = getBaseUrl(c);
+    return c.json({ success: true, data: serializeTrackedLink(updated, base) });
+  } catch (err) {
+    console.error('PUT /api/tracked-links/:id error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 });

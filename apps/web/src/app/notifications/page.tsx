@@ -85,7 +85,7 @@ export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [showCreate, setShowCreate] = useState(false)
+  const [editingRule, setEditingRule] = useState<NotificationRule | 'new' | null>(null)
   const [form, setForm] = useState<CreateFormState>({
     name: '',
     eventType: '',
@@ -137,7 +137,35 @@ export default function NotificationsPage() {
 
   useEffect(() => { load() }, [load])
 
-  const handleCreate = async () => {
+  const openCreate = () => {
+    setEditingRule('new')
+    setForm({ name: '', eventType: '', channels: '', conditions: '{}' })
+    setFormError('')
+  }
+
+  const openEdit = (rule: NotificationRule) => {
+    setEditingRule(rule)
+    setForm({
+      name: rule.name,
+      eventType: rule.eventType,
+      channels: Array.isArray(rule.channels) ? rule.channels.join(', ') : '',
+      conditions: JSON.stringify(rule.conditions || {}, null, 2),
+    })
+    setFormError('')
+  }
+
+  const openDuplicate = (rule: NotificationRule) => {
+    setEditingRule('new')
+    setForm({
+      name: rule.name + ' (コピー)',
+      eventType: rule.eventType,
+      channels: Array.isArray(rule.channels) ? rule.channels.join(', ') : '',
+      conditions: JSON.stringify(rule.conditions || {}, null, 2),
+    })
+    setFormError('')
+  }
+
+  const handleSave = async () => {
     if (!form.name.trim()) {
       setFormError('ルール名を入力してください')
       return
@@ -163,21 +191,20 @@ export default function NotificationsPage() {
     setSaving(true)
     setFormError('')
     try {
-      const res = await api.notifications.rules.create({
-        name: form.name,
-        eventType: form.eventType,
-        conditions,
-        channels,
-      })
+      const isEditing = editingRule !== 'new' && editingRule !== null
+      const data = { name: form.name, eventType: form.eventType, conditions, channels }
+      const res = isEditing
+        ? await api.notifications.rules.update(editingRule.id, data)
+        : await api.notifications.rules.create(data)
       if (res.success) {
-        setShowCreate(false)
+        setEditingRule(null)
         setForm({ name: '', eventType: '', channels: '', conditions: '{}' })
         loadRules()
       } else {
         setFormError(res.error)
       }
     } catch {
-      setFormError('作成に失敗しました')
+      setFormError(editingRule !== 'new' && editingRule !== null ? '更新に失敗しました' : '作成に失敗しました')
     } finally {
       setSaving(false)
     }
@@ -207,13 +234,15 @@ export default function NotificationsPage() {
     loadNotifications(value || undefined)
   }
 
+  const isEditing = editingRule !== null && editingRule !== 'new'
+
   return (
     <div>
       <Header
         title="通知ルール設定"
         action={
           <button
-            onClick={() => setShowCreate(true)}
+            onClick={openCreate}
             className="px-4 py-2 text-sm font-medium text-white rounded-lg transition-opacity hover:opacity-90"
             style={{ backgroundColor: '#06C755' }}
           >
@@ -229,10 +258,12 @@ export default function NotificationsPage() {
         </div>
       )}
 
-      {/* Create form */}
-      {showCreate && (
+      {/* Create/Edit form */}
+      {editingRule !== null && (
         <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-sm font-semibold text-gray-800 mb-4">新規ルールを作成</h2>
+          <h2 className="text-sm font-semibold text-gray-800 mb-4">
+            {isEditing ? 'ルールを編集' : '新規ルールを作成'}
+          </h2>
           <div className="space-y-4 max-w-lg">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">ルール名 <span className="text-red-500">*</span></label>
@@ -279,15 +310,15 @@ export default function NotificationsPage() {
 
             <div className="flex gap-2">
               <button
-                onClick={handleCreate}
+                onClick={handleSave}
                 disabled={saving}
                 className="px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 transition-opacity"
                 style={{ backgroundColor: '#06C755' }}
               >
-                {saving ? '作成中...' : '作成'}
+                {saving ? (isEditing ? '更新中...' : '作成中...') : (isEditing ? '更新' : '作成')}
               </button>
               <button
-                onClick={() => { setShowCreate(false); setFormError('') }}
+                onClick={() => { setEditingRule(null); setFormError('') }}
                 className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
               >
                 キャンセル
@@ -314,7 +345,7 @@ export default function NotificationsPage() {
               </div>
             ))}
           </div>
-        ) : rules.length === 0 && !showCreate ? (
+        ) : rules.length === 0 && editingRule === null ? (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
             <p className="text-gray-500">通知ルールがありません。「新規ルール」から作成してください。</p>
           </div>
@@ -323,7 +354,8 @@ export default function NotificationsPage() {
             {rules.map((rule) => (
               <div
                 key={rule.id}
-                className="bg-white rounded-lg shadow-sm border border-gray-200 p-5 flex flex-col gap-3"
+                className="bg-white rounded-lg shadow-sm border border-gray-200 p-5 flex flex-col gap-3 cursor-pointer hover:border-gray-300 transition-colors"
+                onClick={() => openEdit(rule)}
               >
                 {/* Header */}
                 <div className="flex items-start justify-between">
@@ -332,7 +364,7 @@ export default function NotificationsPage() {
                     <p className="text-xs text-gray-400 mt-0.5">{rule.eventType}</p>
                   </div>
                   <button
-                    onClick={() => handleToggleActive(rule.id, rule.isActive)}
+                    onClick={(e) => { e.stopPropagation(); handleToggleActive(rule.id, rule.isActive) }}
                     className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
                       rule.isActive ? 'bg-green-500' : 'bg-gray-300'
                     }`}
@@ -360,12 +392,20 @@ export default function NotificationsPage() {
                 {/* Footer */}
                 <div className="flex items-center justify-between mt-auto pt-2 border-t border-gray-100">
                   <span className="text-xs text-gray-400">{formatDatetime(rule.createdAt)}</span>
-                  <button
-                    onClick={() => handleDelete(rule.id)}
-                    className="px-3 py-1 text-xs font-medium text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
-                  >
-                    削除
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openDuplicate(rule) }}
+                      className="px-3 py-1 text-xs font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
+                    >
+                      複製
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDelete(rule.id) }}
+                      className="px-3 py-1 text-xs font-medium text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
+                    >
+                      削除
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}

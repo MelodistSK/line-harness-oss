@@ -26,11 +26,13 @@ function formatDate(iso: string): string {
   })
 }
 
+type EditingLink = TrackedLink | 'new' | null
+
 export default function TrackedLinksPage() {
   const [links, setLinks] = useState<TrackedLink[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [showCreate, setShowCreate] = useState(false)
+  const [editingLink, setEditingLink] = useState<EditingLink>(null)
   const [form, setForm] = useState({ name: '', url: '', tagId: '', scenarioId: '' })
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
@@ -58,36 +60,65 @@ export default function TrackedLinksPage() {
   useEffect(() => { load() }, [load])
 
   useEffect(() => {
-    if (showCreate) {
+    if (editingLink) {
       api.tags.list().then(r => { if (r.success) setTags(r.data) }).catch(() => {})
       api.scenarios.list().then(r => { if (r.success) setScenarios(r.data) }).catch(() => {})
     }
-  }, [showCreate])
+  }, [editingLink])
 
-  const handleCreate = async () => {
+  const openCreate = () => {
+    setEditingLink('new')
+    setForm({ name: '', url: '', tagId: '', scenarioId: '' })
+    setFormError('')
+  }
+
+  const openEdit = (link: TrackedLink) => {
+    setEditingLink(link)
+    setForm({
+      name: link.name,
+      url: link.url,
+      tagId: link.tagId || '',
+      scenarioId: link.scenarioId || '',
+    })
+    setFormError('')
+  }
+
+  const openDuplicate = (link: TrackedLink) => {
+    setEditingLink('new')
+    setForm({
+      name: `${link.name} (コピー)`,
+      url: link.url,
+      tagId: link.tagId || '',
+      scenarioId: link.scenarioId || '',
+    })
+    setFormError('')
+  }
+
+  const handleSave = async () => {
     if (!form.name.trim()) { setFormError('リンク名を入力してください'); return }
     if (!form.url.trim()) { setFormError('URLを入力してください'); return }
     setSaving(true)
     setFormError('')
+    const isEdit = editingLink !== 'new' && editingLink !== null
     try {
-      const res = await fetchApi<{ success: boolean; error?: string }>('/api/tracked-links', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: form.name,
-          url: form.url,
-          tagId: form.tagId || null,
-          scenarioId: form.scenarioId || null,
-        }),
+      const apiUrl = isEdit ? `/api/tracked-links/${editingLink.id}` : '/api/tracked-links'
+      const method = isEdit ? 'PUT' : 'POST'
+      const payload = isEdit
+        ? { name: form.name, originalUrl: form.url, tagId: form.tagId || null, scenarioId: form.scenarioId || null }
+        : { name: form.name, url: form.url, tagId: form.tagId || null, scenarioId: form.scenarioId || null }
+      const res = await fetchApi<{ success: boolean; error?: string }>(apiUrl, {
+        method,
+        body: JSON.stringify(payload),
       })
       if (res.success) {
-        setShowCreate(false)
+        setEditingLink(null)
         setForm({ name: '', url: '', tagId: '', scenarioId: '' })
         load()
       } else {
-        setFormError(res.error || '作成に失敗しました')
+        setFormError(res.error || (isEdit ? '更新に失敗しました' : '作成に失敗しました'))
       }
     } catch {
-      setFormError('作成に失敗しました')
+      setFormError(isEdit ? '更新に失敗しました' : '作成に失敗しました')
     } finally {
       setSaving(false)
     }
@@ -119,7 +150,7 @@ export default function TrackedLinksPage() {
         title="トラッキングリンク"
         action={
           <button
-            onClick={() => setShowCreate(true)}
+            onClick={openCreate}
             className="px-4 py-2 text-sm font-medium text-white rounded-lg transition-opacity hover:opacity-90"
             style={{ backgroundColor: '#06C755' }}
           >
@@ -132,9 +163,11 @@ export default function TrackedLinksPage() {
         <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>
       )}
 
-      {showCreate && (
+      {editingLink && (
         <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-sm font-semibold text-gray-800 mb-4">新規トラッキングリンクを作成</h2>
+          <h2 className="text-sm font-semibold text-gray-800 mb-4">
+            {editingLink === 'new' ? '新規トラッキングリンクを作成' : 'リンク編集'}
+          </h2>
           <div className="space-y-4 max-w-lg">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">リンク名 <span className="text-red-500">*</span></label>
@@ -164,11 +197,11 @@ export default function TrackedLinksPage() {
             </div>
             {formError && <p className="text-xs text-red-600">{formError}</p>}
             <div className="flex gap-2">
-              <button onClick={handleCreate} disabled={saving}
+              <button onClick={handleSave} disabled={saving}
                 className="px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 transition-opacity" style={{ backgroundColor: '#06C755' }}>
-                {saving ? '作成中...' : '作成'}
+                {saving ? '保存中...' : editingLink === 'new' ? '作成' : '更新'}
               </button>
-              <button onClick={() => { setShowCreate(false); setFormError('') }}
+              <button onClick={() => { setEditingLink(null); setFormError('') }}
                 className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
                 キャンセル
               </button>
@@ -221,7 +254,7 @@ export default function TrackedLinksPage() {
             </div>
           ))}
         </div>
-      ) : links.length === 0 && !showCreate ? (
+      ) : links.length === 0 && !editingLink ? (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
           <p className="text-gray-500">トラッキングリンクがありません。「新規リンク」から作成してください。</p>
         </div>
@@ -255,10 +288,20 @@ export default function TrackedLinksPage() {
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-500">{formatDate(link.createdAt)}</td>
                     <td className="px-4 py-3 text-right">
-                      <button onClick={() => handleDelete(link.id)}
-                        className="px-3 py-1 text-xs font-medium text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-md transition-colors">
-                        削除
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button onClick={() => openEdit(link)}
+                          className="px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors">
+                          編集
+                        </button>
+                        <button onClick={() => openDuplicate(link)}
+                          className="px-3 py-1 text-xs font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors border border-gray-200">
+                          複製
+                        </button>
+                        <button onClick={() => handleDelete(link.id)}
+                          className="px-3 py-1 text-xs font-medium text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-md transition-colors">
+                          削除
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

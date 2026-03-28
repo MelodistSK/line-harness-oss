@@ -44,7 +44,7 @@ export default function ScoringPage() {
   const [rules, setRules] = useState<ScoringRule[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [showCreate, setShowCreate] = useState(false)
+  const [editingRule, setEditingRule] = useState<ScoringRule | 'new' | null>(null)
   const [form, setForm] = useState<CreateFormState>({
     name: '',
     eventType: '',
@@ -74,7 +74,25 @@ export default function ScoringPage() {
     loadRules()
   }, [loadRules])
 
-  const handleCreate = async () => {
+  const openCreate = () => {
+    setEditingRule('new')
+    setForm({ name: '', eventType: '', scoreValue: '' })
+    setFormError('')
+  }
+
+  const openEdit = (rule: ScoringRule) => {
+    setEditingRule(rule)
+    setForm({ name: rule.name, eventType: rule.eventType, scoreValue: String(rule.scoreValue) })
+    setFormError('')
+  }
+
+  const openDuplicate = (rule: ScoringRule) => {
+    setEditingRule('new')
+    setForm({ name: rule.name + ' (コピー)', eventType: rule.eventType, scoreValue: String(rule.scoreValue) })
+    setFormError('')
+  }
+
+  const handleSave = async () => {
     if (!form.name.trim()) {
       setFormError('ルール名を入力してください')
       return
@@ -90,20 +108,24 @@ export default function ScoringPage() {
     setSaving(true)
     setFormError('')
     try {
-      const res = await api.scoring.createRule({
+      const isEditing = editingRule !== 'new' && editingRule !== null
+      const data = {
         name: form.name,
         eventType: form.eventType,
         scoreValue: Number(form.scoreValue),
-      })
+      }
+      const res = isEditing
+        ? await api.scoring.updateRule(editingRule.id, data)
+        : await api.scoring.createRule(data)
       if (res.success) {
-        setShowCreate(false)
+        setEditingRule(null)
         setForm({ name: '', eventType: '', scoreValue: '' })
         loadRules()
       } else {
         setFormError(res.error)
       }
     } catch {
-      setFormError('作成に失敗しました')
+      setFormError(editingRule !== 'new' && editingRule !== null ? '更新に失敗しました' : '作成に失敗しました')
     } finally {
       setSaving(false)
     }
@@ -130,6 +152,7 @@ export default function ScoringPage() {
 
   const totalRules = rules.length
   const activeRules = rules.filter((r) => r.isActive).length
+  const isEditing = editingRule !== null && editingRule !== 'new'
 
   return (
     <div>
@@ -137,7 +160,7 @@ export default function ScoringPage() {
         title="スコアリングルール"
         action={
           <button
-            onClick={() => setShowCreate(true)}
+            onClick={openCreate}
             className="px-4 py-2 text-sm font-medium text-white rounded-lg transition-opacity hover:opacity-90"
             style={{ backgroundColor: '#06C755' }}
           >
@@ -167,10 +190,12 @@ export default function ScoringPage() {
         </div>
       )}
 
-      {/* Create form */}
-      {showCreate && (
+      {/* Create/Edit form */}
+      {editingRule !== null && (
         <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-sm font-semibold text-gray-800 mb-4">新規スコアリングルールを作成</h2>
+          <h2 className="text-sm font-semibold text-gray-800 mb-4">
+            {isEditing ? 'スコアリングルールを編集' : '新規スコアリングルールを作成'}
+          </h2>
           <div className="space-y-4 max-w-lg">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">ルール名 <span className="text-red-500">*</span></label>
@@ -207,15 +232,15 @@ export default function ScoringPage() {
 
             <div className="flex gap-2">
               <button
-                onClick={handleCreate}
+                onClick={handleSave}
                 disabled={saving}
                 className="px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 transition-opacity"
                 style={{ backgroundColor: '#06C755' }}
               >
-                {saving ? '作成中...' : '作成'}
+                {saving ? (isEditing ? '更新中...' : '作成中...') : (isEditing ? '更新' : '作成')}
               </button>
               <button
-                onClick={() => { setShowCreate(false); setFormError('') }}
+                onClick={() => { setEditingRule(null); setFormError('') }}
                 className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
               >
                 キャンセル
@@ -245,7 +270,11 @@ export default function ScoringPage() {
             </thead>
             <tbody className="divide-y divide-gray-200">
               {rules.map((rule) => (
-                <tr key={rule.id} className="hover:bg-gray-50">
+                <tr
+                  key={rule.id}
+                  className="hover:bg-gray-50 cursor-pointer"
+                  onClick={() => openEdit(rule)}
+                >
                   <td className="px-4 py-3 text-sm font-medium text-gray-900">{rule.name}</td>
                   <td className="px-4 py-3">
                     <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{rule.eventType}</span>
@@ -257,7 +286,7 @@ export default function ScoringPage() {
                   </td>
                   <td className="px-4 py-3">
                     <button
-                      onClick={() => handleToggleActive(rule.id, rule.isActive)}
+                      onClick={(e) => { e.stopPropagation(); handleToggleActive(rule.id, rule.isActive) }}
                       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                         rule.isActive ? 'bg-green-500' : 'bg-gray-300'
                       }`}
@@ -270,12 +299,20 @@ export default function ScoringPage() {
                     </button>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => handleDelete(rule.id)}
-                      className="text-red-500 hover:text-red-700 text-sm"
-                    >
-                      削除
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openDuplicate(rule) }}
+                        className="px-3 py-1 text-xs font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
+                      >
+                        複製
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDelete(rule.id) }}
+                        className="text-red-500 hover:text-red-700 text-sm"
+                      >
+                        削除
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

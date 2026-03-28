@@ -13,10 +13,12 @@ interface ScenarioListProps {
   scenarios: ScenarioWithCount[]
   onToggleActive: (id: string, current: boolean) => void
   onDelete: (id: string) => void
+  onEdit: (scenario: ScenarioWithCount) => void
+  onDuplicate: (scenario: ScenarioWithCount) => void
   loading?: boolean
 }
 
-export default function ScenarioList({ scenarios, onToggleActive, onDelete, loading }: ScenarioListProps) {
+export default function ScenarioList({ scenarios, onToggleActive, onDelete, onEdit, onDuplicate, loading }: ScenarioListProps) {
   if (scenarios.length === 0) {
     return (
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
@@ -28,15 +30,16 @@ export default function ScenarioList({ scenarios, onToggleActive, onDelete, load
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
       {scenarios.map((scenario) => (
-        <div key={scenario.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-5 flex flex-col gap-3 hover:shadow-md transition-shadow">
+        <div
+          key={scenario.id}
+          className="bg-white rounded-lg shadow-sm border border-gray-200 p-5 flex flex-col gap-3 hover:shadow-md transition-shadow cursor-pointer"
+          onClick={() => onEdit(scenario)}
+        >
           {/* Header */}
           <div className="flex items-start justify-between gap-2">
-            <Link
-              href={`/scenarios/detail?id=${scenario.id}`}
-              className="text-sm font-semibold text-gray-900 hover:text-green-600 transition-colors leading-tight"
-            >
+            <span className="text-sm font-semibold text-gray-900 hover:text-green-600 transition-colors leading-tight">
               {scenario.name}
-            </Link>
+            </span>
             <span
               className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                 scenario.isActive
@@ -72,13 +75,19 @@ export default function ScenarioList({ scenarios, onToggleActive, onDelete, load
           </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-2 pt-1 border-t border-gray-100">
+          <div className="flex items-center gap-2 pt-1 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
             <Link
               href={`/scenarios/detail?id=${scenario.id}`}
               className="flex-1 text-center text-xs font-medium text-green-600 hover:text-green-700 py-1 min-h-[44px] flex items-center justify-center rounded-md hover:bg-green-50 transition-colors"
             >
-              編集
+              ステップ編集
             </Link>
+            <button
+              onClick={() => onDuplicate(scenario)}
+              className="flex-1 text-xs font-medium text-gray-600 hover:text-gray-900 py-1 min-h-[44px] flex items-center justify-center rounded-md hover:bg-gray-100 transition-colors"
+            >
+              複製
+            </button>
             <button
               onClick={() => onToggleActive(scenario.id, scenario.isActive)}
               disabled={loading}

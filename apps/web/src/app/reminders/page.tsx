@@ -28,7 +28,7 @@ interface ReminderWithSteps extends Reminder {
   steps: ReminderStep[]
 }
 
-interface CreateFormState {
+interface FormState {
   name: string
   description: string
 }
@@ -83,13 +83,16 @@ const ccPrompts = [
   },
 ]
 
+const emptyForm: FormState = { name: '', description: '' }
+
 export default function RemindersPage() {
   const { selectedAccountId } = useAccount()
   const [reminders, setReminders] = useState<Reminder[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [showCreate, setShowCreate] = useState(false)
-  const [form, setForm] = useState<CreateFormState>({ name: '', description: '' })
+  // null = closed, 'new' = creating, Reminder = editing existing
+  const [editingReminder, setEditingReminder] = useState<Reminder | null | 'new'>(null)
+  const [form, setForm] = useState<FormState>(emptyForm)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
 
@@ -159,7 +162,37 @@ export default function RemindersPage() {
     loadDetail(id)
   }
 
-  const handleCreate = async () => {
+  const openNew = () => {
+    setEditingReminder('new')
+    setForm(emptyForm)
+    setFormError('')
+  }
+
+  const openEdit = (reminder: Reminder) => {
+    setEditingReminder(reminder)
+    setForm({
+      name: reminder.name,
+      description: reminder.description ?? '',
+    })
+    setFormError('')
+  }
+
+  const openDuplicate = (reminder: Reminder) => {
+    setEditingReminder('new')
+    setForm({
+      name: `${reminder.name} (コピー)`,
+      description: reminder.description ?? '',
+    })
+    setFormError('')
+  }
+
+  const closeForm = () => {
+    setEditingReminder(null)
+    setForm(emptyForm)
+    setFormError('')
+  }
+
+  const handleSave = async () => {
     if (!form.name.trim()) {
       setFormError('リマインダー名を入力してください')
       return
@@ -167,19 +200,24 @@ export default function RemindersPage() {
     setSaving(true)
     setFormError('')
     try {
-      const res = await api.reminders.create({
+      const isEditing = editingReminder !== null && editingReminder !== 'new'
+      const payload = {
         name: form.name,
         description: form.description || undefined,
-      })
+      }
+
+      const res = isEditing
+        ? await api.reminders.update(editingReminder.id, payload)
+        : await api.reminders.create(payload)
+
       if (res.success) {
-        setShowCreate(false)
-        setForm({ name: '', description: '' })
+        closeForm()
         loadReminders()
       } else {
         setFormError(res.error)
       }
     } catch {
-      setFormError('作成に失敗しました')
+      setFormError(editingReminder !== 'new' && editingReminder !== null ? '更新に失敗しました' : '作成に失敗しました')
     } finally {
       setSaving(false)
     }
@@ -204,6 +242,10 @@ export default function RemindersPage() {
       if (expandedId === id) {
         setExpandedId(null)
         setExpandedData(null)
+      }
+      // Close form if editing deleted reminder
+      if (editingReminder !== null && editingReminder !== 'new' && editingReminder.id === id) {
+        closeForm()
       }
       loadReminders()
     } catch {
@@ -250,13 +292,18 @@ export default function RemindersPage() {
     }
   }
 
+  const isEditing = editingReminder !== null && editingReminder !== 'new'
+  const formTitle = isEditing ? 'リマインダー編集' : '新規リマインダーを作成'
+  const saveLabel = isEditing ? '保存' : '作成'
+  const savingLabel = isEditing ? '保存中...' : '作成中...'
+
   return (
     <div>
       <Header
         title="リマインダ配信"
         action={
           <button
-            onClick={() => setShowCreate(true)}
+            onClick={openNew}
             className="px-4 py-2 min-h-[44px] text-sm font-medium text-white rounded-lg transition-opacity hover:opacity-90"
             style={{ backgroundColor: '#06C755' }}
           >
@@ -272,10 +319,10 @@ export default function RemindersPage() {
         </div>
       )}
 
-      {/* Create form */}
-      {showCreate && (
+      {/* Create / Edit form */}
+      {editingReminder !== null && (
         <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-sm font-semibold text-gray-800 mb-4">新規リマインダーを作成</h2>
+          <h2 className="text-sm font-semibold text-gray-800 mb-4">{formTitle}</h2>
           <div className="space-y-4 max-w-lg">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">リマインダー名 <span className="text-red-500">*</span></label>
@@ -302,15 +349,15 @@ export default function RemindersPage() {
 
             <div className="flex gap-2">
               <button
-                onClick={handleCreate}
+                onClick={handleSave}
                 disabled={saving}
                 className="px-4 py-2 min-h-[44px] text-sm font-medium text-white rounded-lg disabled:opacity-50 transition-opacity"
                 style={{ backgroundColor: '#06C755' }}
               >
-                {saving ? '作成中...' : '作成'}
+                {saving ? savingLabel : saveLabel}
               </button>
               <button
-                onClick={() => { setShowCreate(false); setFormError('') }}
+                onClick={closeForm}
                 className="px-4 py-2 min-h-[44px] text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
               >
                 キャンセル
@@ -334,7 +381,7 @@ export default function RemindersPage() {
             </div>
           ))}
         </div>
-      ) : reminders.length === 0 && !showCreate ? (
+      ) : reminders.length === 0 && editingReminder === null ? (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
           <p className="text-gray-500">リマインダーがありません。「新規リマインダー」から作成してください。</p>
         </div>
@@ -383,6 +430,18 @@ export default function RemindersPage() {
                   <div className="border-t border-gray-200 p-5">
                     {/* Actions */}
                     <div className="flex flex-wrap items-center gap-2 mb-4">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openEdit(reminder) }}
+                        className="px-3 py-1.5 min-h-[44px] text-xs font-medium text-green-600 bg-green-50 hover:bg-green-100 rounded-md transition-colors"
+                      >
+                        編集
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openDuplicate(reminder) }}
+                        className="px-3 py-1.5 min-h-[44px] text-xs font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors border border-gray-200"
+                      >
+                        複製
+                      </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); handleToggleActive(reminder.id, reminder.isActive) }}
                         className={`px-3 py-1.5 min-h-[44px] text-xs font-medium rounded-md transition-colors ${
