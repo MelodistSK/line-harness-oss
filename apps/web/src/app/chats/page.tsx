@@ -194,13 +194,14 @@ function DirectMessagePanel({ friendId, friend, onBack, onSent }: {
         ) : (
           messages.map((msg) => (
             <div key={msg.id} className={`flex ${msg.direction === 'outgoing' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[75%] rounded-2xl px-4 py-2 ${
-                msg.direction === 'outgoing'
-                  ? 'bg-green-500 text-white'
-                  : 'bg-gray-100 text-gray-900'
-              }`}>
+              <div
+                className="max-w-[75%] rounded-2xl px-4 py-2"
+                style={msg.direction === 'outgoing'
+                  ? { backgroundColor: '#06C755', color: 'white' }
+                  : { backgroundColor: 'white', color: '#111827' }}
+              >
                 <p className="text-sm whitespace-pre-wrap break-words">{renderContent(msg)}</p>
-                <p className={`text-xs mt-1 ${msg.direction === 'outgoing' ? 'text-green-200' : 'text-gray-400'}`}>
+                <p className="text-xs mt-1" style={msg.direction === 'outgoing' ? { color: 'rgba(255,255,255,0.7)' } : { color: '#9ca3af' }}>
                   {new Date(msg.createdAt).toLocaleString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
                 </p>
               </div>
@@ -559,10 +560,12 @@ export default function ChatsPage() {
                           <div
                             className={`max-w-[320px] px-3 py-2 text-sm break-words whitespace-pre-wrap ${
                               isOutgoing
-                                ? 'rounded-tl-2xl rounded-tr-md rounded-bl-2xl rounded-br-2xl text-white'
-                                : 'rounded-tl-md rounded-tr-2xl rounded-bl-2xl rounded-br-2xl bg-white text-gray-900'
+                                ? 'rounded-tl-2xl rounded-tr-md rounded-bl-2xl rounded-br-2xl'
+                                : 'rounded-tl-md rounded-tr-2xl rounded-bl-2xl rounded-br-2xl'
                             }`}
-                            style={isOutgoing ? { backgroundColor: '#06C755' } : undefined}
+                            style={isOutgoing
+                              ? { backgroundColor: '#06C755', color: 'white' }
+                              : { backgroundColor: 'white', color: '#111827' }}
                           >
                             {bubbleContent}
                           </div>
