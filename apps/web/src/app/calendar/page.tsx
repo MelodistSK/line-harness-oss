@@ -239,10 +239,10 @@ function SettingsTab({ setError, setSuccess }: { setError: (s: string) => void; 
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">
-              秘密鍵 (PEM形式) {hasKey && <span className="text-green-600 font-normal">— 設定済み</span>}
+              秘密鍵 {hasKey && <span className="text-green-600 font-normal">— 設定済み</span>}
             </label>
             <textarea value={privateKey} onChange={e => setPrivateKey(e.target.value)}
-              placeholder={hasKey ? '変更する場合のみ入力してください' : '-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----'}
+              placeholder={hasKey ? '変更する場合のみ入力してください' : '秘密鍵の本体部分のみ貼り付けてください（BEGIN/END行は不要）\nMIIEvQIBADANBgkqhki...'}
               rows={4} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>

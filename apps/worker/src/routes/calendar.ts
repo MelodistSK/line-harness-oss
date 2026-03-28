@@ -84,6 +84,16 @@ calendar.get('/api/calendar/settings', async (c) => {
 calendar.put('/api/calendar/settings', async (c) => {
   try {
     const body = await c.req.json<Partial<Omit<CalendarSettingsRow, 'id' | 'created_at' | 'updated_at'>>>();
+    // Normalize private key: convert literal \n to newlines, wrap with PEM headers if missing
+    if (body.google_private_key) {
+      let key = body.google_private_key.replace(/\\n/g, '\n').trim();
+      if (!key.startsWith('-----BEGIN PRIVATE KEY-----')) {
+        // Strip any accidental headers/whitespace user may have partially included
+        key = key.replace(/-----BEGIN PRIVATE KEY-----/g, '').replace(/-----END PRIVATE KEY-----/g, '').replace(/[\r\n\s]/g, '');
+        key = `-----BEGIN PRIVATE KEY-----\n${key}\n-----END PRIVATE KEY-----`;
+      }
+      body.google_private_key = key;
+    }
     const updated = await upsertCalendarSettings(c.env.DB, body);
     return c.json({
       success: true,
