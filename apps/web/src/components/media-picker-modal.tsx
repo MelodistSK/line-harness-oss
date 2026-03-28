@@ -55,7 +55,7 @@ export default function MediaPickerModal({ open, onClose, onSelect, accept = 'al
     return true
   })
 
-  const isVideo = (ct?: string) => ct?.startsWith('video/')
+  const isVideo = (ct?: string, filename?: string) => ct?.startsWith('video/') || /\.(mp4|m4v|webm)$/i.test(filename ?? '')
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -110,9 +110,10 @@ export default function MediaPickerModal({ open, onClose, onSelect, accept = 'al
                   onClick={() => { onSelect(item.url); onClose() }}
                   className="group relative aspect-square rounded-lg overflow-hidden border-2 border-transparent hover:border-blue-500 transition-colors bg-gray-100"
                 >
-                  {isVideo(item.contentType) ? (
+                  {isVideo(item.contentType, item.filename) ? (
                     <video
-                      src={item.url}
+                      key={item.filename}
+                      src={`${item.url}#t=0.1`}
                       preload="metadata"
                       muted
                       playsInline

@@ -71,7 +71,7 @@ export default function MediaPage() {
     return item.filename.toLowerCase().includes(q) || item.originalName?.toLowerCase().includes(q)
   })
 
-  const isVideo = (ct?: string) => ct?.startsWith('video/')
+  const isVideo = (ct?: string, filename?: string) => ct?.startsWith('video/') || /\.(mp4|m4v|webm)$/i.test(filename ?? '')
 
   return (
     <div>
@@ -162,9 +162,10 @@ export default function MediaPage() {
             <div key={item.filename} className="card overflow-hidden group">
               {/* Thumbnail */}
               <div className="aspect-square bg-gray-100 relative">
-                {isVideo(item.contentType) ? (
+                {isVideo(item.contentType, item.filename) ? (
                   <video
-                    src={item.url}
+                    key={item.filename}
+                    src={`${item.url}#t=0.1`}
                     preload="metadata"
                     muted
                     playsInline
