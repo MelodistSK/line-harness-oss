@@ -14,6 +14,9 @@ const messageTypeLabels: Record<MessageType, string> = {
   text: 'テキスト',
   image: '画像',
   flex: 'Flexメッセージ',
+  carousel: 'カルーセル',
+  video: '動画',
+  rich_menu: 'リッチメニュー',
 }
 
 function minutesToDisplay(minutes: number): { days: number; hours: number; mins: number } {
