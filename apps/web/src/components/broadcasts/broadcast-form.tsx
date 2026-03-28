@@ -170,12 +170,15 @@ function CarouselBuilder({ cards, onChange }: { cards: CarouselCard[]; onChange:
             value={card.text}
             onChange={e => updateCard(i, { text: e.target.value })}
           />
-          <input
-            className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-green-500"
-            placeholder="画像URL (省略可)"
-            value={card.imageUrl}
-            onChange={e => updateCard(i, { imageUrl: e.target.value })}
-          />
+          <div className="flex gap-2 items-center">
+            <input
+              className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-green-500"
+              placeholder="画像URL (省略可)"
+              value={card.imageUrl}
+              onChange={e => updateCard(i, { imageUrl: e.target.value })}
+            />
+            <ImageUploader label="Upload" onUploaded={url => updateCard(i, { imageUrl: url })} />
+          </div>
           <div className="space-y-1">
             {card.buttons.map((btn, bi) => (
               <div key={bi} className="flex gap-1 items-center">
