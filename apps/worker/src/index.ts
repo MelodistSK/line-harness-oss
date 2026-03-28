@@ -136,6 +136,15 @@ h1{font-size:28px;font-weight:800;margin-bottom:8px}
 </html>`);
 });
 
+// LIFF app — serve from KV
+app.get('/liff', async (c) => {
+  const html = await c.env.ASSETS.get('liff-index.html', 'text');
+  if (!html) return c.json({ success: false, error: 'LIFF app not found' }, 404);
+  return new Response(html, {
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  });
+});
+
 // 404 fallback
 app.notFound((c) => c.json({ success: false, error: 'Not found' }, 404));
 
