@@ -108,9 +108,11 @@ assets.get('/assets/:filename', async (c) => {
     }
 
     const mime = metadata?.contentType ?? 'application/octet-stream';
-    return new Response(value as ArrayBuffer, {
+    const buf = value as ArrayBuffer;
+    return new Response(buf, {
       headers: {
         'Content-Type': mime,
+        'Content-Length': String(buf.byteLength),
         'Cache-Control': 'public, max-age=31536000, immutable',
       },
     });

@@ -468,12 +468,20 @@ export function buildMessage(messageType: string, messageContent: string): Messa
 
   if (messageType === 'video') {
     try {
-      const parsed = JSON.parse(messageContent) as { originalContentUrl: string; previewImageUrl: string };
-      return {
+      const parsed = JSON.parse(messageContent) as { originalContentUrl: string; previewImageUrl: string; _quickReply?: QuickReplyItemDef[] };
+      // LINE requires previewImageUrl to be a JPEG/PNG image, not a video URL.
+      // Use a 1x1 transparent PNG as fallback when no preview image is provided.
+      const FALLBACK_PREVIEW = 'https://placehold.co/320x180/1a1a2e/ffffff.png?text=Video';
+      const previewUrl = parsed.previewImageUrl?.trim() || FALLBACK_PREVIEW;
+      const msg: Record<string, unknown> = {
         type: 'video',
         originalContentUrl: parsed.originalContentUrl,
-        previewImageUrl: parsed.previewImageUrl || parsed.originalContentUrl,
+        previewImageUrl: previewUrl,
       };
+      if (Array.isArray(parsed._quickReply) && parsed._quickReply.length > 0) {
+        msg.quickReply = buildQuickReplyObject(parsed._quickReply);
+      }
+      return msg as unknown as Message;
     } catch {
       return { type: 'text', text: messageContent };
     }

@@ -116,7 +116,7 @@ export async function autoTrackContent(
   content: string,
   workerUrl: string,
 ): Promise<AutoTrackResult> {
-  if (messageType === 'image') return { messageType, content };
+  if (messageType === 'image' || messageType === 'video') return { messageType, content };
 
   const urls = extractUrls(content);
   if (urls.size === 0) return { messageType, content };

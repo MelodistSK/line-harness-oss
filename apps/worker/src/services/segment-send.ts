@@ -4,9 +4,10 @@ import {
   jstNow,
 } from '@line-crm/db';
 import type { Broadcast } from '@line-crm/db';
-import type { LineClient, Message } from '@line-crm/line-sdk';
+import type { LineClient } from '@line-crm/line-sdk';
 import { calculateStaggerDelay, sleep, addMessageVariation } from './stealth.js';
 import { buildSegmentQuery } from './segment-query.js';
+import { buildMessage } from './step-delivery.js';
 import type { SegmentCondition } from './segment-query.js';
 
 const MULTICAST_BATCH_SIZE = 500;
@@ -143,35 +144,3 @@ export async function processSegmentSend(
   return (await getBroadcastById(db, broadcastId))!;
 }
 
-function buildMessage(messageType: string, messageContent: string): Message {
-  if (messageType === 'text') {
-    return { type: 'text', text: messageContent };
-  }
-
-  if (messageType === 'image') {
-    try {
-      const parsed = JSON.parse(messageContent) as {
-        originalContentUrl: string;
-        previewImageUrl: string;
-      };
-      return {
-        type: 'image',
-        originalContentUrl: parsed.originalContentUrl,
-        previewImageUrl: parsed.previewImageUrl,
-      };
-    } catch {
-      return { type: 'text', text: messageContent };
-    }
-  }
-
-  if (messageType === 'flex') {
-    try {
-      const contents = JSON.parse(messageContent);
-      return { type: 'flex', altText: 'Message', contents };
-    } catch {
-      return { type: 'text', text: messageContent };
-    }
-  }
-
-  return { type: 'text', text: messageContent };
-}
