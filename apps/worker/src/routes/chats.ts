@@ -212,7 +212,7 @@ chats.put('/api/chats/:id', async (c) => {
   }
 });
 
-// オペレーターからメッセージ送信
+// オペレーターからメッセージ送信（全メッセージ種別対応）
 chats.post('/api/chats/:id/send', async (c) => {
   try {
     const chatId = c.req.param('id');
@@ -225,20 +225,25 @@ chats.post('/api/chats/:id/send', async (c) => {
     const friend = await c.env.DB
       .prepare(`SELECT * FROM friends WHERE id = ?`)
       .bind(chat.friend_id)
-      .first<{ id: string; line_user_id: string }>();
+      .first<{ id: string; line_user_id: string; line_account_id?: string }>();
     if (!friend) return c.json({ success: false, error: 'Friend not found' }, 404);
 
-    // LINE APIでメッセージ送信
+    // Multi-account: resolve correct access token
     const { LineClient } = await import('@line-crm/line-sdk');
-    const lineClient = new LineClient(c.env.LINE_CHANNEL_ACCESS_TOKEN);
+    let accessToken = c.env.LINE_CHANNEL_ACCESS_TOKEN;
+    if (friend.line_account_id) {
+      const { getLineAccountById } = await import('@line-crm/db');
+      const account = await getLineAccountById(c.env.DB, friend.line_account_id);
+      if (account) accessToken = account.channel_access_token;
+    }
+    const lineClient = new LineClient(accessToken);
+
     const messageType = body.messageType ?? 'text';
 
-    if (messageType === 'text') {
-      await lineClient.pushTextMessage(friend.line_user_id, body.content);
-    } else if (messageType === 'flex') {
-      const contents = JSON.parse(body.content);
-      await lineClient.pushFlexMessage(friend.line_user_id, 'Message', contents);
-    }
+    // Use buildMessage to build LINE API message for all types
+    const { buildMessage } = await import('../services/step-delivery.js');
+    const message = buildMessage(messageType, body.content);
+    await lineClient.pushMessage(friend.line_user_id, [message]);
 
     // メッセージログに記録
     const logId = crypto.randomUUID();
@@ -253,7 +258,8 @@ chats.post('/api/chats/:id/send', async (c) => {
     return c.json({ success: true, data: { sent: true, messageId: logId } });
   } catch (err) {
     console.error('POST /api/chats/:id/send error:', err);
-    return c.json({ success: false, error: 'Internal server error' }, 500);
+    const message = err instanceof Error ? err.message : 'Internal server error';
+    return c.json({ success: false, error: message }, 500);
   }
 });
 
