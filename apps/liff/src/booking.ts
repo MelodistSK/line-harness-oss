@@ -440,9 +440,10 @@ async function fetchSlots(date: string): Promise<void> {
   try {
     const res = await apiCall(`/api/calendar/available?date=${date}`);
     if (!res.ok) throw new Error('スロット取得に失敗しました');
-    const json = await res.json() as { success: boolean; data: Slot[] };
+    const json = await res.json() as { success: boolean; data: { slots?: Slot[]; closed?: boolean } | Slot[] };
     if (!json.success) throw new Error('スロット取得に失敗しました');
-    state.slots = json.data;
+    const slotsData = Array.isArray(json.data) ? json.data : (json.data as { slots?: Slot[] }).slots ?? [];
+    state.slots = slotsData;
   } catch (err) {
     state.slots = [];
     console.error('fetchSlots error:', err);

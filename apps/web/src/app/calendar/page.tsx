@@ -499,9 +499,14 @@ function PreviewTab({ setError }: { setError: (s: string) => void }) {
       const res = await fetch(`${API_URL}/api/calendar/available?date=${date}`, {
         headers: { Authorization: `Bearer ${apiKey}` },
       })
-      const json = await res.json().catch(() => null) as { success?: boolean; data?: Slot[]; error?: string } | null
-      if (json?.success && Array.isArray(json.data)) {
-        setSlots(json.data)
+      const json = await res.json().catch(() => null) as { success?: boolean; data?: { slots?: Slot[]; closed?: boolean } | Slot[]; error?: string } | null
+      if (json?.success && json.data) {
+        // data may be { slots: [...] } or directly [...]
+        const slotsArr = Array.isArray(json.data) ? json.data : Array.isArray((json.data as { slots?: Slot[] }).slots) ? (json.data as { slots: Slot[] }).slots : []
+        setSlots(slotsArr)
+        if ((json.data as { closed?: boolean }).closed) {
+          setInfo('この日は休業日です')
+        }
       } else {
         setSlots([])
         setInfo(json?.error || 'スロットを取得できませんでした')
