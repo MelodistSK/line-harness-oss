@@ -279,12 +279,30 @@ async function main() {
     }
 
     const page = getPage();
+    console.log('[liff-debug] href:', window.location.href);
+    console.log('[liff-debug] search:', window.location.search);
+    console.log('[liff-debug] getPage():', page);
+
     if (page === 'book' || page === 'booking') {
       await initBooking();
     } else if (page === 'form') {
       const formId = getQueryParam('id');
       await initForm(formId);
     } else {
+      // Before running friend-add flow, check if liff.state has page info that we missed
+      const rawSearch = window.location.search;
+      const hash = window.location.hash;
+      console.log('[liff-debug] falling through to linkAndAddFlow. hash:', hash);
+      // LIFF v2 sometimes puts state in hash fragment: #/?page=booking
+      if (hash) {
+        const hashParams = new URLSearchParams(hash.replace(/^#\/?/, '').replace(/^\?/, ''));
+        const hashPage = hashParams.get('page');
+        if (hashPage === 'book' || hashPage === 'booking') {
+          console.log('[liff-debug] found page in hash, routing to booking');
+          await initBooking();
+          return;
+        }
+      }
       await linkAndAddFlow();
     }
   } catch (err) {
