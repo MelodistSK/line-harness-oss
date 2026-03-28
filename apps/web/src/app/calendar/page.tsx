@@ -403,7 +403,7 @@ function BookingsTab({ setError, setSuccess }: { setError: (s: string) => void; 
     setLoading(true)
     try {
       const res = await fetchApi<{ success: boolean; data: Booking[] }>('/api/calendar/bookings')
-      if (res.success) setBookings(res.data)
+      if (res.success && Array.isArray(res.data)) setBookings(res.data)
     } catch { setError('予約の読み込みに失敗しました') }
     finally { setLoading(false) }
   }, [setError])
@@ -484,23 +484,39 @@ function BookingsTab({ setError, setSuccess }: { setError: (s: string) => void; 
 // ─── Preview Tab ───────────────────────────────────────────────────────────
 
 function PreviewTab({ setError }: { setError: (s: string) => void }) {
-  const [date, setDate] = useState(todayStr())
+  const [date, setDate] = useState(() => todayStr())
   const [slots, setSlots] = useState<Slot[]>([])
   const [loading, setLoading] = useState(false)
+  const [info, setInfo] = useState('')
 
   const loadSlots = useCallback(async () => {
     if (!date) return
     setLoading(true)
+    setInfo('')
     try {
-      const res = await fetchApi<{ success: boolean; data: Slot[] }>(`/api/calendar/available?date=${date}`)
-      if (res.success) setSlots(res.data)
-    } catch { setError('空き状況の取得に失敗しました') }
-    finally { setLoading(false) }
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
+      const apiKey = typeof window !== 'undefined' ? localStorage.getItem('lh_api_key') || '' : ''
+      const res = await fetch(`${API_URL}/api/calendar/available?date=${date}`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      })
+      const json = await res.json().catch(() => null) as { success?: boolean; data?: Slot[]; error?: string } | null
+      if (json?.success && Array.isArray(json.data)) {
+        setSlots(json.data)
+      } else {
+        setSlots([])
+        setInfo(json?.error || 'スロットを取得できませんでした')
+      }
+    } catch {
+      setSlots([])
+      setError('空き状況の取得に失敗しました')
+    } finally {
+      setLoading(false)
+    }
   }, [date, setError])
 
   useEffect(() => { loadSlots() }, [loadSlots])
 
-  const available = slots.filter(s => s.available).length
+  const available = slots.filter(s => s?.available).length
   const total = slots.length
 
   return (
@@ -508,27 +524,29 @@ function PreviewTab({ setError }: { setError: (s: string) => void }) {
       <div className="flex items-center gap-4 mb-6">
         <input type="date" value={date} onChange={e => setDate(e.target.value)}
           className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
-        <span className="text-sm text-gray-500">{available}/{total} スロット空き</span>
+        {total > 0 && <span className="text-sm text-gray-500">{available}/{total} スロット空き</span>}
       </div>
+
+      {info && <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-700 text-sm">{info}</div>}
 
       {loading ? (
         <div className="card p-12 text-center text-gray-400">読み込み中...</div>
-      ) : slots.length === 0 ? (
+      ) : slots.length === 0 && !info ? (
         <div className="card p-12 text-center"><p className="text-gray-500">この日のスロットはありません（休日の可能性）</p></div>
-      ) : (
+      ) : slots.length > 0 ? (
         <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
           {slots.map((s, i) => {
-            const time = formatTime(s.startAt)
+            const time = formatTime(s?.startAt ?? '')
             return (
               <div key={i} className={`px-3 py-2 rounded-lg text-center text-sm font-medium transition-colors ${
-                s.available ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-gray-100 text-gray-400 border border-gray-200'
+                s?.available ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-gray-100 text-gray-400 border border-gray-200'
               }`}>
                 {time}
               </div>
             )
           })}
         </div>
-      )}
+      ) : null}
     </div>
   )
 }
