@@ -153,7 +153,7 @@ function showCompletion(profile: { displayName: string; pictureUrl?: string }, i
   // 2秒後にトーク画面に遷移
   setTimeout(() => {
     // LINE内でもブラウザでも、トーク画面URLに遷移
-    window.location.href = 'https://line.me/R/oaMessage/@086cdqiw/';
+    window.location.href = BOT_BASIC_ID ? `https://line.me/R/oaMessage/${BOT_BASIC_ID}/` : 'https://line.me/R/nv/chat';
   }, 2000);
 }
 
