@@ -38,9 +38,9 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
 function getApiKey(): string {
   if (typeof window !== 'undefined') {
     const stored = localStorage.getItem('lh_api_key')
-    if (stored) return stored
+    if (stored) return stored.trim()
   }
-  return process.env.NEXT_PUBLIC_API_KEY || ''
+  return (process.env.NEXT_PUBLIC_API_KEY || '').trim()
 }
 
 export async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
