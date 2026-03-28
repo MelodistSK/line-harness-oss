@@ -47,7 +47,7 @@ interface CreateFormState {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const LIFF_ID = process.env.NEXT_PUBLIC_LIFF_ID || ''
+const LIFF_ID = (process.env.NEXT_PUBLIC_LIFF_ID || '').trim()
 
 const MESSAGE_TYPES = [
   { value: 'text', label: 'テキスト' },

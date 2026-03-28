@@ -49,7 +49,7 @@ interface TemplateData {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const LIFF_ID = process.env.NEXT_PUBLIC_LIFF_ID || ''
+const LIFF_ID = (process.env.NEXT_PUBLIC_LIFF_ID || '').trim()
 
 function generateFormFlex(form: FormData): string {
   const liffUrl = `https://liff.line.me/${LIFF_ID}?page=form&id=${form.id}`

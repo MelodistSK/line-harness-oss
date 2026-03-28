@@ -93,7 +93,7 @@ const CONDITION_TYPES = [
   { value: 'metadata_not_equals', label: 'メタデータが不一致' },
 ]
 
-const LIFF_ID = process.env.NEXT_PUBLIC_LIFF_ID || ''
+const LIFF_ID = (process.env.NEXT_PUBLIC_LIFF_ID || '').trim()
 
 const emptyStepForm: StepFormState = {
   stepOrder: 1,
