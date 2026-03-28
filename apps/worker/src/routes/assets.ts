@@ -12,6 +12,12 @@ const MIME_TYPES: Record<string, string> = {
   svg: 'image/svg+xml',
   mp4: 'video/mp4',
   m4v: 'video/mp4',
+  js: 'application/javascript',
+  css: 'text/css',
+  html: 'text/html',
+  json: 'application/json',
+  woff2: 'font/woff2',
+  woff: 'font/woff',
 };
 
 const ALLOWED_EXTENSIONS = new Set(Object.keys(MIME_TYPES));
@@ -99,6 +105,11 @@ assets.post('/api/assets/upload', async (c) => {
   }
 });
 
+function mimeFromFilename(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+  return MIME_TYPES[ext] ?? 'application/octet-stream';
+}
+
 // OPTIONS /assets/:filename — CORS preflight
 assets.options('/assets/:filename', (c) => {
   return new Response(null, { status: 204, headers: CORS_HEADERS });
@@ -113,7 +124,7 @@ assets.get('/assets/:filename', async (c) => {
     // Try R2 first — supports range requests natively
     const r2Head = await c.env.ASSETS.head(filename);
     if (r2Head) {
-      const mime = r2Head.httpMetadata?.contentType ?? 'application/octet-stream';
+      const mime = r2Head.httpMetadata?.contentType || mimeFromFilename(filename);
       const totalSize = r2Head.size;
 
       if (rangeHeader) {
@@ -158,7 +169,7 @@ assets.get('/assets/:filename', async (c) => {
       'arrayBuffer',
     );
     if (value) {
-      const mime = metadata?.contentType ?? 'application/octet-stream';
+      const mime = metadata?.contentType || mimeFromFilename(filename);
       const buf = value as ArrayBuffer;
       const totalSize = buf.byteLength;
 

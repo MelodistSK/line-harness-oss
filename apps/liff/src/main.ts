@@ -261,7 +261,7 @@ async function main() {
     }
 
     const page = getPage();
-    if (page === 'book') {
+    if (page === 'book' || page === 'booking') {
       await initBooking();
     } else if (page === 'form') {
       const params = new URLSearchParams(window.location.search);
