@@ -10,10 +10,24 @@ import { buildSegmentQuery } from './segment-query.js';
 import type { SegmentCondition } from './segment-query.js';
 
 const MULTICAST_BATCH_SIZE = 500;
+const TEMPLATE_VAR_RE = /\{\{(name|score|uid)\}\}/;
 
 interface FriendRow {
   id: string;
   line_user_id: string;
+  display_name: string | null;
+  score: number;
+}
+
+function expandVariables(text: string, friend: FriendRow): string {
+  return text
+    .replace(/\{\{name\}\}/g, friend.display_name ?? '')
+    .replace(/\{\{score\}\}/g, String(friend.score ?? 0))
+    .replace(/\{\{uid\}\}/g, friend.line_user_id);
+}
+
+function hasTemplateVariables(content: string): boolean {
+  return TEMPLATE_VAR_RE.test(content);
 }
 
 export async function processSegmentSend(
@@ -31,6 +45,7 @@ export async function processSegmentSend(
   }
 
   const message = buildMessage(broadcast.message_type, broadcast.message_content);
+  const useVariables = hasTemplateVariables(broadcast.message_content);
 
   let totalCount = 0;
   let successCount = 0;
@@ -47,43 +62,74 @@ export async function processSegmentSend(
     totalCount = friends.length;
 
     const now = jstNow();
-    const totalBatches = Math.ceil(friends.length / MULTICAST_BATCH_SIZE);
 
-    for (let i = 0; i < friends.length; i += MULTICAST_BATCH_SIZE) {
-      const batchIndex = Math.floor(i / MULTICAST_BATCH_SIZE);
-      const batch = friends.slice(i, i + MULTICAST_BATCH_SIZE);
-      const lineUserIds = batch.map((f) => f.line_user_id);
+    if (useVariables) {
+      console.log(`[segment-send] Variable expansion ON — sending individually to ${friends.length} friends`);
+      for (let i = 0; i < friends.length; i++) {
+        const friend = friends[i];
+        const expandedContent = expandVariables(broadcast.message_content, friend);
+        const personalMessage = buildMessage(broadcast.message_type, expandedContent);
 
-      // Stealth: stagger delays between batches
-      if (batchIndex > 0) {
-        const delay = calculateStaggerDelay(friends.length, batchIndex);
-        await sleep(delay);
-      }
+        if (i > 0 && i % MULTICAST_BATCH_SIZE === 0) {
+          const batchIndex = Math.floor(i / MULTICAST_BATCH_SIZE);
+          const delay = calculateStaggerDelay(friends.length, batchIndex);
+          await sleep(delay);
+        }
 
-      // Stealth: add slight variation to text messages
-      let batchMessage = message;
-      if (message.type === 'text' && totalBatches > 1) {
-        batchMessage = { ...message, text: addMessageVariation(message.text, batchIndex) };
-      }
+        try {
+          await lineClient.pushMessage(friend.line_user_id, [personalMessage]);
+          successCount++;
 
-      try {
-        await lineClient.multicast(lineUserIds, [batchMessage]);
-        successCount += batch.length;
-
-        // Log successfully sent messages
-        for (const friend of batch) {
           const logId = crypto.randomUUID();
           await db
             .prepare(
               `INSERT INTO messages_log (id, friend_id, direction, message_type, content, broadcast_id, scenario_step_id, created_at)
                VALUES (?, ?, 'outgoing', ?, ?, ?, NULL, ?)`,
             )
-            .bind(logId, friend.id, broadcast.message_type, broadcast.message_content, broadcastId, now)
+            .bind(logId, friend.id, broadcast.message_type, expandedContent, broadcastId, now)
             .run();
+        } catch (err) {
+          console.error(`Segment push to ${friend.line_user_id} failed:`, err);
         }
-      } catch (err) {
-        console.error(`Segment multicast batch ${batchIndex} failed:`, err);
-        // Continue with next batch; failed batch is not logged
+      }
+    } else {
+      const totalBatches = Math.ceil(friends.length / MULTICAST_BATCH_SIZE);
+
+      for (let i = 0; i < friends.length; i += MULTICAST_BATCH_SIZE) {
+        const batchIndex = Math.floor(i / MULTICAST_BATCH_SIZE);
+        const batch = friends.slice(i, i + MULTICAST_BATCH_SIZE);
+        const lineUserIds = batch.map((f) => f.line_user_id);
+
+        // Stealth: stagger delays between batches
+        if (batchIndex > 0) {
+          const delay = calculateStaggerDelay(friends.length, batchIndex);
+          await sleep(delay);
+        }
+
+        // Stealth: add slight variation to text messages
+        let batchMessage = message;
+        if (message.type === 'text' && totalBatches > 1) {
+          batchMessage = { ...message, text: addMessageVariation(message.text, batchIndex) };
+        }
+
+        try {
+          await lineClient.multicast(lineUserIds, [batchMessage]);
+          successCount += batch.length;
+
+          // Log successfully sent messages
+          for (const friend of batch) {
+            const logId = crypto.randomUUID();
+            await db
+              .prepare(
+                `INSERT INTO messages_log (id, friend_id, direction, message_type, content, broadcast_id, scenario_step_id, created_at)
+                 VALUES (?, ?, 'outgoing', ?, ?, ?, NULL, ?)`,
+              )
+              .bind(logId, friend.id, broadcast.message_type, broadcast.message_content, broadcastId, now)
+              .run();
+          }
+        } catch (err) {
+          console.error(`Segment multicast batch ${batchIndex} failed:`, err);
+        }
       }
     }
 

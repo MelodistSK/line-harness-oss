@@ -49,17 +49,58 @@ export async function processBroadcastSend(
     finalType = tracked.messageType;
     finalContent = tracked.content;
   }
+
+  const containsVars = hasTemplateVariables(finalContent);
+  console.log(`[broadcast] id=${broadcastId} type=${broadcast.target_type} msgType=${finalType} hasVars=${containsVars} content=${finalContent.slice(0, 120)}`);
+
   const message = buildMessage(finalType, finalContent);
   let totalCount = 0;
   let successCount = 0;
 
   try {
-    if (broadcast.target_type === 'all') {
-      // Use LINE broadcast API (sends to all followers)
+    if (broadcast.target_type === 'all' && !containsVars) {
+      // No variables — use efficient LINE broadcast API
       await lineClient.broadcast([message]);
-      // We don't have exact count for broadcast API, set as 0 (unknown)
       totalCount = 0;
       successCount = 0;
+    } else if (broadcast.target_type === 'all' && containsVars) {
+      // Variables present — must fetch all friends and send individually
+      const allFriends = await db
+        .prepare(`SELECT * FROM friends WHERE is_following = 1 ORDER BY created_at DESC`)
+        .all<Friend>();
+      const followingFriends = allFriends.results ?? [];
+      totalCount = followingFriends.length;
+      console.log(`[broadcast] target_type=all with variables — sending individually to ${followingFriends.length} friends`);
+
+      const now = jstNow();
+      for (let i = 0; i < followingFriends.length; i++) {
+        const friend = followingFriends[i];
+        const expandedContent = expandVariables(finalContent, friend);
+        console.log(`[broadcast] friend=${friend.display_name} expanded=${expandedContent.slice(0, 100)}`);
+        const personalMessage = buildMessage(finalType, expandedContent);
+
+        if (i > 0 && i % MULTICAST_BATCH_SIZE === 0) {
+          const batchIndex = Math.floor(i / MULTICAST_BATCH_SIZE);
+          const delay = calculateStaggerDelay(followingFriends.length, batchIndex);
+          await sleep(delay);
+        }
+
+        try {
+          await lineClient.pushMessage(friend.line_user_id, [personalMessage]);
+          successCount++;
+
+          const logId = crypto.randomUUID();
+          await db
+            .prepare(
+              `INSERT INTO messages_log (id, friend_id, direction, message_type, content, broadcast_id, scenario_step_id, created_at)
+               VALUES (?, ?, 'outgoing', ?, ?, ?, NULL, ?)`,
+            )
+            .bind(logId, friend.id, broadcast.message_type, expandedContent, broadcastId, now)
+            .run();
+        } catch (err) {
+          console.error(`Push to ${friend.line_user_id} failed:`, err);
+        }
+      }
     } else if (broadcast.target_type === 'tag') {
       if (!broadcast.target_tag_id) {
         throw new Error('target_tag_id is required for tag-targeted broadcasts');
@@ -73,10 +114,12 @@ export async function processBroadcastSend(
       const useVariables = hasTemplateVariables(finalContent);
 
       if (useVariables) {
+        console.log(`[broadcast] Variable expansion ON — sending individually to ${followingFriends.length} friends`);
         // Per-friend send with variable expansion
         for (let i = 0; i < followingFriends.length; i++) {
           const friend = followingFriends[i];
           const expandedContent = expandVariables(finalContent, friend);
+          console.log(`[broadcast] friend=${friend.display_name} uid=${friend.line_user_id} expanded=${expandedContent.slice(0, 100)}`);
           const personalMessage = buildMessage(finalType, expandedContent);
 
           // Stealth: stagger every 500 messages
