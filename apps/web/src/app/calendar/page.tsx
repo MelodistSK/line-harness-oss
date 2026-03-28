@@ -198,9 +198,21 @@ function SettingsTab({ setError, setSuccess }: { setError: (s: string) => void; 
     setTesting(true)
     setTestResult(null)
     try {
-      const res = await fetchApi<{ success: boolean; data?: { message: string }; error?: string }>('/api/calendar/test-connection', { method: 'POST' })
-      setTestResult(res.success ? '接続成功! Google Calendarにアクセスできました。' : `接続失敗: ${res.error}`)
-    } catch { setTestResult('接続テストに失敗しました') }
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
+      const apiKey = typeof window !== 'undefined' ? localStorage.getItem('lh_api_key') || '' : ''
+      const res = await fetch(`${API_URL}/api/calendar/test-connection`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      })
+      const json = await res.json() as { success: boolean; data?: { message: string; calendarId?: string; busyIntervalsToday?: number }; error?: string }
+      if (json.success) {
+        setTestResult(`接続成功! カレンダー: ${json.data?.calendarId ?? '?'} (本日の予定: ${json.data?.busyIntervalsToday ?? 0}件)`)
+      } else {
+        setTestResult(`接続失敗: ${json.error}`)
+      }
+    } catch (err) {
+      setTestResult(`接続テストに失敗しました: ${err instanceof Error ? err.message : String(err)}`)
+    }
     finally { setTesting(false) }
   }
 

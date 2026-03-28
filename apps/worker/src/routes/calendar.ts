@@ -133,7 +133,16 @@ calendar.post('/api/calendar/test-connection', async (c) => {
     const timeMin = `${todayStr}T00:00:00+09:00`;
     const timeMax = `${todayStr}T23:59:59+09:00`;
 
-    const busy = await gcal.getFreeBusy(timeMin, timeMax);
+    console.log(`[test-connection] client_email=${settings.google_client_email}, calendar_id=${settings.google_calendar_id}, key_length=${settings.google_private_key?.length ?? 0}`);
+
+    let busy: { start: string; end: string }[];
+    try {
+      busy = await gcal.getFreeBusy(timeMin, timeMax);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[test-connection] FreeBusy failed:', msg);
+      return c.json({ success: false, error: msg }, 400);
+    }
 
     return c.json({
       success: true,

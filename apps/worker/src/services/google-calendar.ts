@@ -91,14 +91,27 @@ async function generateServiceAccountToken(
   const unsignedToken = `${encodedHeader}.${encodedClaims}`;
 
   // 3. Import PEM private key using Web Crypto API (PKCS8)
-  const keyData = pemToArrayBuffer(privateKeyPem);
-  const cryptoKey = await crypto.subtle.importKey(
-    'pkcs8',
-    keyData,
-    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  );
+  let keyData: ArrayBuffer;
+  try {
+    keyData = pemToArrayBuffer(privateKeyPem);
+    console.log(`[gcal-jwt] PEM parsed, key data: ${keyData.byteLength} bytes`);
+  } catch (err) {
+    throw new Error(`PEM parsing failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  let cryptoKey: CryptoKey;
+  try {
+    cryptoKey = await crypto.subtle.importKey(
+      'pkcs8',
+      keyData,
+      { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+      false,
+      ['sign'],
+    );
+    console.log('[gcal-jwt] Key imported OK');
+  } catch (err) {
+    throw new Error(`Key import failed (invalid PKCS8?): ${err instanceof Error ? err.message : String(err)}`);
+  }
 
   // 4. Sign with RS256
   const encoder = new TextEncoder();
@@ -107,12 +120,14 @@ async function generateServiceAccountToken(
     cryptoKey,
     encoder.encode(unsignedToken),
   );
+  console.log(`[gcal-jwt] JWT signed OK (${signature.byteLength}B)`);
 
   // 5. Build signed JWT
   const encodedSignature = base64urlEncode(signature);
   const jwt = `${unsignedToken}.${encodedSignature}`;
 
   // 6. Exchange JWT for access token
+  console.log('[gcal-jwt] Exchanging JWT for access token...');
   const tokenRes = await fetch(TOKEN_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -122,17 +137,24 @@ async function generateServiceAccountToken(
     }),
   });
 
+  const tokenText = await tokenRes.text();
+  console.log(`[gcal-jwt] Token response: ${tokenRes.status} ${tokenText.slice(0, 500)}`);
+
   if (!tokenRes.ok) {
-    const text = await tokenRes.text().catch(() => '');
-    throw new Error(`Service account token exchange failed ${tokenRes.status}: ${text}`);
+    throw new Error(`Token exchange failed (${tokenRes.status}): ${tokenText}`);
   }
 
-  const tokenData = (await tokenRes.json()) as { access_token?: string };
+  let tokenData: { access_token?: string };
+  try {
+    tokenData = JSON.parse(tokenText);
+  } catch {
+    throw new Error(`Token exchange returned non-JSON: ${tokenText.slice(0, 200)}`);
+  }
   if (!tokenData.access_token) {
-    throw new Error('Service account token exchange: response missing access_token');
+    throw new Error(`Token response missing access_token: ${tokenText.slice(0, 200)}`);
   }
 
-  // 7. Return the access token
+  console.log('[gcal-jwt] Access token obtained');
   return tokenData.access_token;
 }
 
