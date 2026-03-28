@@ -93,20 +93,50 @@ assets.post('/api/assets/upload', async (c) => {
   }
 });
 
-// GET /assets/:filename — serve file publicly (no auth)
+// GET /assets/:filename — serve file publicly (no auth, Range request supported)
 assets.get('/assets/:filename', async (c) => {
   try {
     const filename = c.req.param('filename');
+    const rangeHeader = c.req.header('range');
 
-    // Try R2 first, then fall back to KV (for migration period)
-    const obj = await c.env.ASSETS.get(filename);
-    if (obj) {
-      const headers = new Headers();
-      headers.set('Content-Type', obj.httpMetadata?.contentType ?? 'application/octet-stream');
-      headers.set('Content-Length', String(obj.size));
-      headers.set('Cache-Control', 'public, max-age=31536000, immutable');
-      headers.set('ETag', obj.httpEtag);
-      return new Response(obj.body, { headers });
+    // Try R2 first — supports range requests natively
+    const r2Head = await c.env.ASSETS.head(filename);
+    if (r2Head) {
+      const mime = r2Head.httpMetadata?.contentType ?? 'application/octet-stream';
+      const totalSize = r2Head.size;
+
+      if (rangeHeader) {
+        const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+        if (match) {
+          const start = parseInt(match[1], 10);
+          const end = match[2] ? parseInt(match[2], 10) : totalSize - 1;
+          const obj = await c.env.ASSETS.get(filename, { range: { offset: start, length: end - start + 1 } });
+          if (!obj) return c.json({ success: false, error: 'Not found' }, 404);
+          return new Response(obj.body, {
+            status: 206,
+            headers: {
+              'Content-Type': mime,
+              'Content-Range': `bytes ${start}-${end}/${totalSize}`,
+              'Content-Length': String(end - start + 1),
+              'Accept-Ranges': 'bytes',
+              'Cache-Control': 'public, max-age=31536000, immutable',
+              'ETag': r2Head.httpEtag,
+            },
+          });
+        }
+      }
+
+      const obj = await c.env.ASSETS.get(filename);
+      if (!obj) return c.json({ success: false, error: 'Not found' }, 404);
+      return new Response(obj.body, {
+        headers: {
+          'Content-Type': mime,
+          'Content-Length': String(totalSize),
+          'Accept-Ranges': 'bytes',
+          'Cache-Control': 'public, max-age=31536000, immutable',
+          'ETag': obj.httpEtag,
+        },
+      });
     }
 
     // Fallback: check KV (legacy files not yet migrated)
@@ -117,10 +147,32 @@ assets.get('/assets/:filename', async (c) => {
     if (value) {
       const mime = metadata?.contentType ?? 'application/octet-stream';
       const buf = value as ArrayBuffer;
+      const totalSize = buf.byteLength;
+
+      if (rangeHeader) {
+        const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+        if (match) {
+          const start = parseInt(match[1], 10);
+          const end = match[2] ? parseInt(match[2], 10) : totalSize - 1;
+          const slice = buf.slice(start, end + 1);
+          return new Response(slice, {
+            status: 206,
+            headers: {
+              'Content-Type': mime,
+              'Content-Range': `bytes ${start}-${end}/${totalSize}`,
+              'Content-Length': String(slice.byteLength),
+              'Accept-Ranges': 'bytes',
+              'Cache-Control': 'public, max-age=31536000, immutable',
+            },
+          });
+        }
+      }
+
       return new Response(buf, {
         headers: {
           'Content-Type': mime,
-          'Content-Length': String(buf.byteLength),
+          'Content-Length': String(totalSize),
+          'Accept-Ranges': 'bytes',
           'Cache-Control': 'public, max-age=31536000, immutable',
         },
       });

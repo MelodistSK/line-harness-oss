@@ -111,10 +111,15 @@ export default function MediaPickerModal({ open, onClose, onSelect, accept = 'al
                   className="group relative aspect-square rounded-lg overflow-hidden border-2 border-transparent hover:border-blue-500 transition-colors bg-gray-100"
                 >
                   {isVideo(item.contentType) ? (
-                    <div className="w-full h-full flex flex-col items-center justify-center bg-gray-800 text-white">
-                      <svg className="w-8 h-8 opacity-60" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                      <span className="text-[9px] mt-1 opacity-50 truncate max-w-full px-1">{item.originalName || item.filename}</span>
-                    </div>
+                    <video
+                      src={item.url}
+                      preload="metadata"
+                      muted
+                      playsInline
+                      className="w-full h-full object-cover"
+                      onMouseEnter={e => (e.target as HTMLVideoElement).play().catch(() => {})}
+                      onMouseLeave={e => { const v = e.target as HTMLVideoElement; v.pause(); v.currentTime = 0 }}
+                    />
                   ) : (
                     <img src={item.url} alt={item.filename} className="w-full h-full object-cover" loading="lazy" />
                   )}

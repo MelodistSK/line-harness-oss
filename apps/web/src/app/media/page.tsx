@@ -163,10 +163,15 @@ export default function MediaPage() {
               {/* Thumbnail */}
               <div className="aspect-square bg-gray-100 relative">
                 {isVideo(item.contentType) ? (
-                  <div className="w-full h-full flex flex-col items-center justify-center bg-gray-800 text-white">
-                    <svg className="w-10 h-10 opacity-60" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                    <span className="text-[10px] mt-2 opacity-40">VIDEO</span>
-                  </div>
+                  <video
+                    src={item.url}
+                    preload="metadata"
+                    muted
+                    playsInline
+                    className="w-full h-full object-cover"
+                    onMouseEnter={e => (e.target as HTMLVideoElement).play().catch(() => {})}
+                    onMouseLeave={e => { const v = e.target as HTMLVideoElement; v.pause(); v.currentTime = 0 }}
+                  />
                 ) : (
                   <img src={item.url} alt={item.filename} className="w-full h-full object-cover" loading="lazy" />
                 )}
