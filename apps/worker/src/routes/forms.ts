@@ -366,6 +366,17 @@ forms.post('/api/forms/:id/submit', async (c) => {
           if (r.status === 'rejected') console.error('Form side-effect failed:', r.reason);
         }
       }
+
+      // イベントバス発火: form_submitted
+      try {
+        const { fireEvent } = await import('../services/event-bus.js');
+        await fireEvent(db, 'form_submitted', {
+          friendId,
+          eventData: { formId, formName: form.name, submissionId: submission.id, data: submissionData },
+        });
+      } catch (err) {
+        console.error('form_submitted fireEvent failed:', err);
+      }
     }
 
     // kintone integration (best-effort)

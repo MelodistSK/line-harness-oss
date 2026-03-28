@@ -99,10 +99,8 @@ async function fireOutgoingWebhooks(
         const body = JSON.stringify({
           event: eventType,
           timestamp: jstNow(),
-          data: {
-            ...payload,
-            friend: friendDetail,
-          },
+          friend: friendDetail,
+          eventData: payload.eventData ?? {},
         });
 
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -253,6 +251,7 @@ async function executeAction(
 
     case 'start_scenario':
       await enrollFriendInScenario(db, friendId!, action.params.scenarioId);
+      await fireEvent(db, 'scenario_started', { friendId: friendId!, eventData: { scenarioId: action.params.scenarioId } });
       break;
 
     case 'send_message': {

@@ -125,6 +125,7 @@ async function handleEvent(
             .first<{ id: string }>();
           if (!existing) {
             const friendScenario = await enrollFriendInScenario(db, friend.id, scenario.id);
+            await fireEvent(db, 'scenario_started', { friendId: friend.id, eventData: { scenarioId: scenario.id, scenarioName: scenario.name } }, lineAccessToken, lineAccountId);
 
             // Immediate delivery: if the first step has delay=0, send it now via replyMessage (free)
             const steps = await getScenarioSteps(db, scenario.id);
@@ -160,6 +161,7 @@ async function handleEvent(
                   await advanceFriendScenario(db, friendScenario.id, firstStep.step_order, nextDeliveryDate.toISOString().slice(0, -1) + '+09:00');
                 } else {
                   await completeFriendScenario(db, friendScenario.id);
+                  await fireEvent(db, 'scenario_completed', { friendId: friend.id, eventData: { scenarioId: scenario.id, scenarioName: scenario.name } }, lineAccessToken, lineAccountId);
                 }
               } catch (err) {
                 console.error('Failed immediate delivery for scenario', scenario.id, err);

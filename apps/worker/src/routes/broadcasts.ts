@@ -195,6 +195,21 @@ broadcasts.post('/api/broadcasts/:id/send', async (c) => {
     await processBroadcastSend(c.env.DB, lineClient, id, c.env.WORKER_URL);
 
     const result = await getBroadcastById(c.env.DB, id);
+
+    // イベントバス発火: broadcast_sent
+    try {
+      const { fireEvent } = await import('../services/event-bus.js');
+      await fireEvent(c.env.DB, 'broadcast_sent', {
+        eventData: {
+          broadcastId: id,
+          title: existing.title,
+          messageType: existing.message_type,
+        },
+      });
+    } catch (err) {
+      console.error('broadcast_sent fireEvent failed:', err);
+    }
+
     return c.json({ success: true, data: result ? serializeBroadcast(result) : null });
   } catch (err) {
     console.error('POST /api/broadcasts/:id/send error:', err);

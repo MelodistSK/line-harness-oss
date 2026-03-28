@@ -220,8 +220,8 @@ friends.post('/api/friends/:id/tags', async (c) => {
       console.error('Rich menu auto-switch error:', e);
     }
 
-    // イベントバス発火: tag_change
-    await fireEvent(db, 'tag_change', { friendId, eventData: { tagId: body.tagId, action: 'add' } });
+    // イベントバス発火: tag_added
+    await fireEvent(db, 'tag_added', { friendId, eventData: { tagId: body.tagId } });
 
     return c.json({ success: true, data: null }, 201);
   } catch (err) {
@@ -238,8 +238,8 @@ friends.delete('/api/friends/:id/tags/:tagId', async (c) => {
 
     await removeTagFromFriend(c.env.DB, friendId, tagId);
 
-    // イベントバス発火: tag_change
-    await fireEvent(c.env.DB, 'tag_change', { friendId, eventData: { tagId, action: 'remove' } });
+    // イベントバス発火: tag_removed
+    await fireEvent(c.env.DB, 'tag_removed', { friendId, eventData: { tagId } });
 
     return c.json({ success: true, data: null });
   } catch (err) {

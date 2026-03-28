@@ -56,7 +56,18 @@ export default function WebhooksPage() {
   const [showCreate, setShowCreate] = useState(false)
 
   const [inForm, setInForm] = useState({ name: '', sourceType: '' })
-  const [outForm, setOutForm] = useState({ name: '', url: '', eventTypes: '', secret: '' })
+  const [outForm, setOutForm] = useState({ name: '', url: '', eventTypes: [] as string[], secret: '' })
+
+  const ALL_EVENT_TYPES = [
+    { value: 'friend_add',          label: '友だち追加',     emoji: '👥' },
+    { value: 'message_received',    label: 'メッセージ受信', emoji: '💬' },
+    { value: 'form_submitted',      label: 'フォーム回答',   emoji: '📝' },
+    { value: 'tag_added',           label: 'タグ付与',       emoji: '🏷️' },
+    { value: 'tag_removed',         label: 'タグ削除',       emoji: '🗑️' },
+    { value: 'scenario_started',    label: 'シナリオ開始',   emoji: '▶️' },
+    { value: 'scenario_completed',  label: 'シナリオ完了',   emoji: '✅' },
+    { value: 'broadcast_sent',      label: '配信送信',       emoji: '📤' },
+  ]
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -137,17 +148,13 @@ export default function WebhooksPage() {
     e.preventDefault()
     if (!outForm.name || !outForm.url) return
     try {
-      const eventTypes = outForm.eventTypes
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean)
       await api.webhooks.outgoing.create({
         name: outForm.name,
         url: outForm.url,
-        eventTypes,
+        eventTypes: outForm.eventTypes,
         secret: outForm.secret || undefined,
       })
-      setOutForm({ name: '', url: '', eventTypes: '', secret: '' })
+      setOutForm({ name: '', url: '', eventTypes: [], secret: '' })
       setShowCreate(false)
       load()
     } catch {
@@ -263,14 +270,34 @@ export default function WebhooksPage() {
                 required
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">イベントタイプ (カンマ区切り)</label>
-              <input
-                value={outForm.eventTypes}
-                onChange={(e) => setOutForm({ ...outForm, eventTypes: e.target.value })}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                placeholder="friend.added, message.received"
-              />
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">イベントタイプ（受け取るイベントを選択）</label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {ALL_EVENT_TYPES.map((et) => (
+                  <label
+                    key={et.value}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors text-sm ${
+                      outForm.eventTypes.includes(et.value)
+                        ? 'border-green-500 bg-green-50 text-green-800'
+                        : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="sr-only"
+                      checked={outForm.eventTypes.includes(et.value)}
+                      onChange={(e) => {
+                        const next = e.target.checked
+                          ? [...outForm.eventTypes, et.value]
+                          : outForm.eventTypes.filter((v) => v !== et.value)
+                        setOutForm({ ...outForm, eventTypes: next })
+                      }}
+                    />
+                    <span>{et.emoji}</span>
+                    <span>{et.label}</span>
+                  </label>
+                ))}
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">シークレット (任意)</label>
