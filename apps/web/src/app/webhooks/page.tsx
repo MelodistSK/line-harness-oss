@@ -70,7 +70,9 @@ export default function WebhooksPage() {
     { value: 'scenario_started',    label: 'シナリオ開始',   emoji: '▶️' },
     { value: 'scenario_completed',  label: 'シナリオ完了',   emoji: '✅' },
     { value: 'broadcast_sent',      label: '配信送信',       emoji: '📤' },
-    { value: 'booking_created',     label: 'カレンダー予約', emoji: '📅' },
+    { value: 'booking_created',       label: 'カレンダー予約',       emoji: '📅' },
+    { value: 'booking_cancelled',     label: '予約キャンセル',       emoji: '🚫' },
+    { value: 'booking_reminder_sent', label: '予約リマインダー送信', emoji: '🔔' },
   ]
 
   const load = useCallback(async () => {

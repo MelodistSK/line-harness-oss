@@ -36,7 +36,8 @@ import { forms } from './routes/forms.js';
 import { assets } from './routes/assets.js';
 import { richMenuMappings } from './routes/rich-menu-mappings.js';
 import { adPlatforms } from './routes/ad-platforms.js';
-import { generateBookingHtml, generateFormHtml } from './liff-pages.js';
+import { generateBookingHtml, generateFormHtml, generateBookingCancelHtml } from './liff-pages.js';
+import { processBookingReminders } from './services/booking-reminder.js';
 
 export type Env = {
   Bindings: {
@@ -147,6 +148,15 @@ app.get('/liff/booking', (c) => {
   });
 });
 
+// LIFF Booking Cancel — standalone page, NO friend-add flow
+app.get('/liff/booking/cancel', (c) => {
+  const liffId = c.env.LIFF_URL?.match(/liff\.line\.me\/([^?/]+)/)?.[1] || '2009615537-8qwrEnEt';
+  const workerUrl = c.env.WORKER_URL || new URL(c.req.url).origin;
+  return new Response(generateBookingCancelHtml(liffId, workerUrl), {
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  });
+});
+
 // LIFF Form — standalone page, NO friend-add flow
 app.get('/liff/form', (c) => {
   const liffId = c.env.LIFF_URL?.match(/liff\.line\.me\/([^?/]+)/)?.[1] || '2009615537-8qwrEnEt';
@@ -191,6 +201,10 @@ async function scheduled(
     );
   }
   jobs.push(checkAccountHealth(env.DB));
+
+  // Booking reminders (only need default client, bookings are cross-account)
+  const defaultLineClient = new LineClient(env.LINE_CHANNEL_ACCESS_TOKEN);
+  jobs.push(processBookingReminders(env.DB, defaultLineClient, env.WORKER_URL, env.LINE_CHANNEL_ACCESS_TOKEN));
 
   await Promise.allSettled(jobs);
 }

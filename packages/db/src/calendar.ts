@@ -234,6 +234,124 @@ export async function getCalendarBookingsFiltered(
   return result.results;
 }
 
+// --- Booking Reminders ---
+
+export interface BookingReminderRow {
+  id: string;
+  service_id: string | null;
+  timing_value: number;
+  timing_unit: string;
+  message_type: string;
+  message_content: string;
+  include_cancel_button: number;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BookingReminderLogRow {
+  id: string;
+  booking_id: string;
+  reminder_id: string;
+  sent_at: string | null;
+  status: string;
+}
+
+export async function getBookingReminders(db: D1Database, serviceId?: string | null): Promise<BookingReminderRow[]> {
+  if (serviceId) {
+    const result = await db.prepare(
+      `SELECT * FROM booking_reminders WHERE service_id = ? OR service_id IS NULL ORDER BY timing_value DESC`
+    ).bind(serviceId).all<BookingReminderRow>();
+    return result.results;
+  }
+  const result = await db.prepare('SELECT * FROM booking_reminders ORDER BY timing_value DESC').all<BookingReminderRow>();
+  return result.results;
+}
+
+export async function getActiveBookingReminders(db: D1Database): Promise<BookingReminderRow[]> {
+  const result = await db.prepare('SELECT * FROM booking_reminders WHERE is_active = 1 ORDER BY timing_value DESC').all<BookingReminderRow>();
+  return result.results;
+}
+
+export async function getBookingReminderById(db: D1Database, id: string): Promise<BookingReminderRow | null> {
+  return db.prepare('SELECT * FROM booking_reminders WHERE id = ?').bind(id).first<BookingReminderRow>();
+}
+
+export async function createBookingReminder(
+  db: D1Database,
+  input: { serviceId?: string | null; timingValue: number; timingUnit: string; messageType?: string; messageContent: string; includeCancelButton?: number; isActive?: number },
+): Promise<BookingReminderRow> {
+  const id = crypto.randomUUID();
+  const now = jstNow();
+  await db.prepare(
+    `INSERT INTO booking_reminders (id, service_id, timing_value, timing_unit, message_type, message_content, include_cancel_button, is_active, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(id, input.serviceId ?? null, input.timingValue, input.timingUnit, input.messageType ?? 'flex', input.messageContent, input.includeCancelButton ?? 1, input.isActive ?? 1, now, now).run();
+  return (await getBookingReminderById(db, id))!;
+}
+
+export async function updateBookingReminder(
+  db: D1Database,
+  id: string,
+  data: Partial<{ serviceId: string | null; timingValue: number; timingUnit: string; messageType: string; messageContent: string; includeCancelButton: number; isActive: number }>,
+): Promise<BookingReminderRow | null> {
+  const map: Record<string, string> = {
+    serviceId: 'service_id', timingValue: 'timing_value', timingUnit: 'timing_unit',
+    messageType: 'message_type', messageContent: 'message_content',
+    includeCancelButton: 'include_cancel_button', isActive: 'is_active',
+  };
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  for (const [key, val] of Object.entries(data)) {
+    if (val !== undefined && map[key]) {
+      sets.push(`${map[key]} = ?`);
+      values.push(val);
+    }
+  }
+  if (sets.length === 0) return getBookingReminderById(db, id);
+  sets.push('updated_at = ?');
+  values.push(jstNow());
+  values.push(id);
+  await db.prepare(`UPDATE booking_reminders SET ${sets.join(', ')} WHERE id = ?`).bind(...values).run();
+  return getBookingReminderById(db, id);
+}
+
+export async function deleteBookingReminder(db: D1Database, id: string): Promise<void> {
+  await db.prepare('DELETE FROM booking_reminders WHERE id = ?').bind(id).run();
+}
+
+export async function getBookingReminderLog(db: D1Database, bookingId: string, reminderId: string): Promise<BookingReminderLogRow | null> {
+  return db.prepare('SELECT * FROM booking_reminder_logs WHERE booking_id = ? AND reminder_id = ?').bind(bookingId, reminderId).first<BookingReminderLogRow>();
+}
+
+export async function createBookingReminderLog(
+  db: D1Database,
+  bookingId: string,
+  reminderId: string,
+  status: string,
+): Promise<void> {
+  const id = crypto.randomUUID();
+  const now = status === 'sent' ? jstNow() : null;
+  await db.prepare(
+    `INSERT OR IGNORE INTO booking_reminder_logs (id, booking_id, reminder_id, sent_at, status) VALUES (?, ?, ?, ?, ?)`
+  ).bind(id, bookingId, reminderId, now, status).run();
+}
+
+export async function updateBookingReminderLogStatus(db: D1Database, bookingId: string, reminderId: string, status: string): Promise<void> {
+  const now = status === 'sent' ? jstNow() : null;
+  await db.prepare(
+    `UPDATE booking_reminder_logs SET status = ?, sent_at = COALESCE(?, sent_at) WHERE booking_id = ? AND reminder_id = ?`
+  ).bind(status, now, bookingId, reminderId).run();
+}
+
+/** Get upcoming confirmed bookings (for cron processing) */
+export async function getUpcomingBookings(db: D1Database, beforeTime: string): Promise<CalendarBookingRow[]> {
+  const result = await db.prepare(
+    `SELECT * FROM calendar_bookings WHERE status = 'confirmed' AND start_at > ? AND start_at <= ? ORDER BY start_at ASC`
+  ).bind(jstNow(), beforeTime).all<CalendarBookingRow>();
+  return result.results;
+}
+
 // --- Calendar Settings ---
 
 export interface CalendarSettingsRow {

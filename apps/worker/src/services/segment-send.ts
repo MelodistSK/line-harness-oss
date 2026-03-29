@@ -8,6 +8,7 @@ import type { LineClient } from '@line-crm/line-sdk';
 import { calculateStaggerDelay, sleep, addMessageVariation } from './stealth.js';
 import { buildSegmentQuery } from './segment-query.js';
 import { buildMessage } from './step-delivery.js';
+import { personalizeTrackingUrls } from './auto-track.js';
 import type { SegmentCondition } from './segment-query.js';
 
 const MULTICAST_BATCH_SIZE = 500;
@@ -69,7 +70,8 @@ export async function processSegmentSend(
       for (let i = 0; i < friends.length; i++) {
         const friend = friends[i];
         const expandedContent = expandVariables(broadcast.message_content, friend);
-        const personalMessage = buildMessage(broadcast.message_type, expandedContent);
+        const personalizedContent = personalizeTrackingUrls(expandedContent, friend.line_user_id);
+        const personalMessage = buildMessage(broadcast.message_type, personalizedContent);
 
         if (i > 0 && i % MULTICAST_BATCH_SIZE === 0) {
           const batchIndex = Math.floor(i / MULTICAST_BATCH_SIZE);

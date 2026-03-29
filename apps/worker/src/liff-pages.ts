@@ -367,3 +367,111 @@ init();
 </body>
 </html>`;
 }
+
+/**
+ * Booking cancel page — standalone, no friend-add flow.
+ * URL: /liff/booking/cancel?id={bookingId}
+ */
+export function generateBookingCancelHtml(liffId: string, apiUrl: string): string {
+  return `<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>予約キャンセル</title>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Hiragino Sans','Yu Gothic',system-ui,sans-serif;background:#f5f5f5;color:#333;display:flex;justify-content:center;align-items:center;min-height:100vh}
+#app{max-width:480px;width:100%;padding:24px 16px}
+.card{background:#fff;border-radius:12px;padding:32px 24px;box-shadow:0 1px 3px rgba(0,0,0,0.08);text-align:center}
+.card h2{font-size:20px;margin-bottom:12px;color:#333}
+.info-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0f0f0;text-align:left}
+.info-row .label{color:#888;font-size:14px;flex:0 0 80px}
+.info-row .value{color:#333;font-size:14px;flex:1;text-align:right}
+.cancel-btn{display:block;width:100%;padding:14px;border:none;border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer;margin-top:20px;background:#e53e3e;color:#fff}
+.cancel-btn:disabled{background:#ccc;cursor:not-allowed}
+.back-btn{display:block;width:100%;padding:12px;border:1px solid #ddd;border-radius:8px;font-size:14px;cursor:pointer;margin-top:8px;background:#fff;color:#666}
+.success-icon{font-size:48px;margin-bottom:12px}
+.loading{text-align:center;padding:40px;color:#999}
+.error{color:#e53e3e;margin-top:12px;font-size:14px}
+</style>
+</head>
+<body>
+<div id="app"><div class="loading">読み込み中...</div></div>
+<script>
+(async function(){
+var API='${apiUrl}';
+var LIFF_ID='${liffId}';
+var app=document.getElementById('app');
+
+function getBookingId(){
+  var p=new URLSearchParams(window.location.search);
+  var id=p.get('id');
+  if(id) return id;
+  var ls=p.get('liff.state');
+  if(ls) return new URLSearchParams(ls.replace(/^\\?/,'')).get('id');
+  return null;
+}
+
+async function init(){
+  try{
+    await liff.init({liffId:LIFF_ID});
+    var bookingId=getBookingId();
+    if(!bookingId){app.innerHTML='<div class="card"><h2>エラー</h2><p>予約IDが見つかりません</p></div>';return}
+
+    var res=await fetch(API+'/api/calendar/book/'+bookingId+'/detail');
+    if(!res.ok){app.innerHTML='<div class="card"><h2>エラー</h2><p>予約情報の取得に失敗しました</p></div>';return}
+    var data=await res.json();
+    if(!data.success){app.innerHTML='<div class="card"><h2>エラー</h2><p>'+(data.error||'不明なエラー')+'</p></div>';return}
+    var b=data.data;
+
+    if(b.status==='cancelled'){
+      app.innerHTML='<div class="card"><div class="success-icon">&#10005;</div><h2>この予約は既にキャンセル済みです</h2></div>';
+      return;
+    }
+
+    var startDate=new Date(b.startAt);
+    var days=['日','月','火','水','木','金','土'];
+    var dateStr=startDate.getFullYear()+'/'+(startDate.getMonth()+1)+'/'+startDate.getDate()+'（'+days[startDate.getDay()]+'）';
+    var timeStr=b.startAt.slice(11,16)+' ～ '+b.endAt.slice(11,16);
+
+    var infoRows='<div class="info-row"><span class="label">日時</span><span class="value">'+dateStr+'<br>'+timeStr+'</span></div>';
+    if(b.serviceName) infoRows+='<div class="info-row"><span class="label">サービス</span><span class="value">'+b.serviceName+'</span></div>';
+    if(b.bookingData){
+      var bd=typeof b.bookingData==='string'?JSON.parse(b.bookingData):b.bookingData;
+      for(var k in bd){
+        var label=k==='name'?'お名前':k==='phone'?'電話番号':k==='email'?'メール':k;
+        infoRows+='<div class="info-row"><span class="label">'+label+'</span><span class="value">'+String(bd[k])+'</span></div>';
+      }
+    }
+
+    app.innerHTML='<div class="card"><h2>予約キャンセル確認</h2><p style="color:#888;font-size:14px;margin-bottom:16px">以下の予約をキャンセルしますか？</p>'+infoRows+'<button class="cancel-btn" id="cancelBtn">この予約をキャンセルする</button><button class="back-btn" onclick="liff.closeWindow()">戻る</button><div id="errMsg" class="error"></div></div>';
+
+    document.getElementById('cancelBtn').addEventListener('click',async function(){
+      var btn=this;
+      btn.disabled=true;btn.textContent='キャンセル処理中...';
+      try{
+        var r=await fetch(API+'/api/calendar/book/'+bookingId+'/cancel',{method:'POST',headers:{'Content-Type':'application/json'}});
+        var d=await r.json();
+        if(d.success){
+          app.innerHTML='<div class="card"><div class="success-icon">&#10003;</div><h2>キャンセル完了</h2><p style="color:#666;margin-top:8px">予約がキャンセルされました。</p><button class="back-btn" style="margin-top:20px" onclick="liff.closeWindow()">閉じる</button></div>';
+        }else{
+          document.getElementById('errMsg').textContent=d.error||'キャンセルに失敗しました';
+          btn.disabled=false;btn.textContent='この予約をキャンセルする';
+        }
+      }catch(e){
+        document.getElementById('errMsg').textContent='通信エラーが発生しました';
+        btn.disabled=false;btn.textContent='この予約をキャンセルする';
+      }
+    });
+  }catch(e){
+    app.innerHTML='<div class="card"><h2 style="color:#e53e3e">エラー</h2><p>'+e.message+'</p></div>';
+  }
+}
+init();
+})();
+</script>
+</body>
+</html>`;
+}

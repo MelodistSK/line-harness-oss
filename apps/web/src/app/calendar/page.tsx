@@ -227,6 +227,9 @@ function SettingsTab({ setError, setSuccess }: { setError: (s: string) => void; 
           </div>
         ))}
       </div>
+
+      {/* Booking Reminders Section */}
+      <BookingRemindersSection services={services} setError={setError} setSuccess={setSuccess} />
     </div>
   )
 }
@@ -751,6 +754,346 @@ function PreviewTab({ setError }: { setError: (s: string) => void }) {
           })}
         </div>
       ) : null}
+    </div>
+  )
+}
+
+// ─── Booking Reminders Section ───────────────────────────────────────────
+
+interface BookingReminder {
+  id: string
+  serviceId: string | null
+  timingValue: number
+  timingUnit: string
+  messageType: string
+  messageContent: string
+  includeCancelButton: boolean
+  isActive: boolean
+}
+
+const TIMING_UNITS = [
+  { value: 'days', label: '日前' },
+  { value: 'hours', label: '時間前' },
+  { value: 'minutes', label: '分前' },
+]
+
+const DEFAULT_FLEX_TEMPLATE = `{
+  "type": "bubble",
+  "header": {
+    "type": "box", "layout": "vertical", "backgroundColor": "#1a1a2e", "paddingAll": "16px",
+    "contents": [{"type": "text", "text": "予約リマインダー", "color": "#ffffff", "size": "md", "weight": "bold"}]
+  },
+  "body": {
+    "type": "box", "layout": "vertical", "paddingAll": "16px",
+    "contents": [
+      {"type": "text", "text": "{{name}} 様", "size": "lg", "weight": "bold", "color": "#1a1a2e"},
+      {"type": "text", "text": "ご予約のリマインダーです", "size": "sm", "color": "#666666", "margin": "md", "wrap": true},
+      {"type": "separator", "margin": "lg"},
+      {"type": "box", "layout": "vertical", "margin": "lg", "spacing": "sm", "contents": [
+        {"type": "box", "layout": "horizontal", "contents": [
+          {"type": "text", "text": "サービス", "size": "sm", "color": "#888888", "flex": 3},
+          {"type": "text", "text": "{{serviceName}}", "size": "sm", "color": "#333333", "flex": 5, "wrap": true}
+        ]},
+        {"type": "box", "layout": "horizontal", "contents": [
+          {"type": "text", "text": "日時", "size": "sm", "color": "#888888", "flex": 3},
+          {"type": "text", "text": "{{date}} {{time}}", "size": "sm", "color": "#333333", "flex": 5}
+        ]}
+      ]}
+    ]
+  }
+}`
+
+const DEFAULT_TEXT_TEMPLATE = `{{name}} 様
+
+ご予約のリマインダーです。
+
+サービス: {{serviceName}}
+日時: {{date}} {{time}}
+
+ご来店をお待ちしております。`
+
+const SAMPLE_VARS: Record<string, string> = {
+  '{{name}}': '山田太郎',
+  '{{date}}': '2026/04/01',
+  '{{time}}': '10:00',
+  '{{endTime}}': '10:30',
+  '{{serviceName}}': 'カウンセリング',
+  '{{bookingId}}': 'abc-123',
+  '{{cancelUrl}}': '#',
+  '{{bookingData.phone}}': '090-1234-5678',
+  '{{bookingData.email}}': 'test@example.com',
+  '{{bookingData.name}}': '山田太郎',
+}
+
+function replaceSampleVars(content: string): string {
+  let result = content
+  for (const [key, val] of Object.entries(SAMPLE_VARS)) {
+    result = result.split(key).join(val)
+  }
+  // Handle any remaining {{bookingData.xxx}} patterns
+  result = result.replace(/\{\{bookingData\.\w+\}\}/g, '（サンプル値）')
+  return result
+}
+
+function BookingRemindersSection({ services, setError, setSuccess }: {
+  services: CalendarService[]
+  setError: (s: string) => void
+  setSuccess: (s: string) => void
+}) {
+  const [reminders, setReminders] = useState<BookingReminder[]>([])
+  const [loading, setLoading] = useState(true)
+  const [editingId, setEditingId] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetchApi<{ success: boolean; data: BookingReminder[] }>('/api/calendar/reminders')
+      if (res.success && Array.isArray(res.data)) setReminders(res.data)
+    } catch { setError('リマインダーの読み込みに失敗しました') }
+    finally { setLoading(false) }
+  }, [setError])
+
+  useEffect(() => { load() }, [load])
+
+  const handleCreate = async () => {
+    try {
+      const res = await fetchApi<{ success: boolean; data: BookingReminder }>('/api/calendar/reminders', {
+        method: 'POST',
+        body: JSON.stringify({ timingValue: 1, timingUnit: 'days', messageType: 'flex', messageContent: '', includeCancelButton: true }),
+      })
+      if (res.success && res.data) {
+        setSuccess('リマインダーを追加しました')
+        await load()
+        setEditingId(res.data.id)
+      }
+    } catch { setError('リマインダーの追加に失敗しました') }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('このリマインダーを削除しますか？')) return
+    try {
+      await fetchApi(`/api/calendar/reminders/${id}`, { method: 'DELETE' })
+      setSuccess('リマインダーを削除しました')
+      if (editingId === id) setEditingId(null)
+      load()
+    } catch { setError('削除に失敗しました') }
+  }
+
+  const handleToggle = async (r: BookingReminder) => {
+    try {
+      await fetchApi(`/api/calendar/reminders/${r.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ isActive: !r.isActive }),
+      })
+      load()
+    } catch { setError('更新に失敗しました') }
+  }
+
+  const formatTiming = (v: number, u: string) => {
+    const unit = TIMING_UNITS.find(t => t.value === u)
+    return `${v}${unit?.label ?? u}`
+  }
+
+  return (
+    <div className="mt-8">
+      <div className="flex justify-between items-center mb-4">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">予約リマインダー</h2>
+          <p className="text-xs text-gray-500 mt-0.5">予約前に自動でLINEリマインダーを送信</p>
+        </div>
+        <button onClick={handleCreate}
+          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+          + リマインダー追加
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="card p-8 text-center text-gray-400">読み込み中...</div>
+      ) : reminders.length === 0 ? (
+        <div className="card p-8 text-center">
+          <p className="text-gray-500 mb-3">リマインダーが設定されていません</p>
+          <p className="text-xs text-gray-400">予約の前日や1時間前にリマインドを自動送信できます</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {reminders.map(r => (
+            <div key={r.id} className={`card p-4 border-l-4 ${r.isActive ? 'border-l-blue-500' : 'border-l-gray-300'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3 cursor-pointer flex-1" onClick={() => setEditingId(editingId === r.id ? null : r.id)}>
+                  <div className="text-lg font-bold text-gray-700">{formatTiming(r.timingValue, r.timingUnit)}</div>
+                  <div className="text-xs text-gray-500">
+                    {r.messageType === 'flex' ? 'Flex' : 'テキスト'}
+                    {r.serviceId ? ` / ${services.find(s => s.id === r.serviceId)?.name ?? 'サービス指定'}` : ' / 全サービス共通'}
+                    {r.includeCancelButton && ' / キャンセルボタン付き'}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => handleToggle(r)}
+                    className={`relative w-10 h-5 rounded-full transition-colors ${r.isActive ? 'bg-blue-600' : 'bg-gray-300'}`}>
+                    <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${r.isActive ? 'translate-x-5' : ''}`} />
+                  </button>
+                  <button onClick={() => handleDelete(r.id)} className="text-xs text-red-400 hover:text-red-600 ml-2">削除</button>
+                </div>
+              </div>
+
+              {editingId === r.id && (
+                <ReminderEditor reminder={r} services={services} onSave={() => { setEditingId(null); load() }} setError={setError} setSuccess={setSuccess} />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Reminder Editor ─────────────────────────────────────────────────────
+
+function ReminderEditor({ reminder, services, onSave, setError, setSuccess }: {
+  reminder: BookingReminder
+  services: CalendarService[]
+  onSave: () => void
+  setError: (s: string) => void
+  setSuccess: (s: string) => void
+}) {
+  const [form, setForm] = useState({
+    serviceId: reminder.serviceId ?? '',
+    timingValue: reminder.timingValue,
+    timingUnit: reminder.timingUnit,
+    messageType: reminder.messageType,
+    messageContent: reminder.messageContent,
+    includeCancelButton: reminder.includeCancelButton,
+  })
+  const [saving, setSaving] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await fetchApi(`/api/calendar/reminders/${reminder.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          serviceId: form.serviceId || null,
+          timingValue: form.timingValue,
+          timingUnit: form.timingUnit,
+          messageType: form.messageType,
+          messageContent: form.messageContent,
+          includeCancelButton: form.includeCancelButton,
+        }),
+      })
+      setSuccess('リマインダーを保存しました')
+      onSave()
+    } catch { setError('保存に失敗しました') }
+    finally { setSaving(false) }
+  }
+
+  const insertDefaultTemplate = () => {
+    setForm(f => ({
+      ...f,
+      messageContent: f.messageType === 'flex' ? DEFAULT_FLEX_TEMPLATE : DEFAULT_TEXT_TEMPLATE,
+    }))
+  }
+
+  const previewContent = replaceSampleVars(form.messageContent)
+  let flexPreviewObj: unknown = null
+  if (form.messageType === 'flex' && form.messageContent.trim()) {
+    try { flexPreviewObj = JSON.parse(previewContent) } catch { /* invalid JSON */ }
+  }
+
+  return (
+    <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
+      {/* Timing */}
+      <div className="grid grid-cols-3 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">タイミング</label>
+          <div className="flex gap-2">
+            <input type="number" min={1} value={form.timingValue}
+              onChange={e => setForm(f => ({ ...f, timingValue: parseInt(e.target.value) || 1 }))}
+              className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+            <select value={form.timingUnit} onChange={e => setForm(f => ({ ...f, timingUnit: e.target.value }))}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+              {TIMING_UNITS.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">対象サービス</label>
+          <select value={form.serviceId} onChange={e => setForm(f => ({ ...f, serviceId: e.target.value }))}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="">全サービス共通</option>
+            {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">メッセージタイプ</label>
+          <select value={form.messageType} onChange={e => setForm(f => ({ ...f, messageType: e.target.value, messageContent: '' }))}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="flex">Flex</option>
+            <option value="text">テキスト</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Cancel button toggle */}
+      <label className="flex items-center gap-2 text-sm text-gray-700">
+        <input type="checkbox" checked={form.includeCancelButton}
+          onChange={e => setForm(f => ({ ...f, includeCancelButton: e.target.checked }))}
+          className="rounded border-gray-300" />
+        キャンセルボタンを含める（Flexの場合、自動でキャンセルリンクボタンを追加）
+      </label>
+
+      {/* Message content */}
+      <div>
+        <div className="flex justify-between items-center mb-1">
+          <label className="block text-xs font-medium text-gray-700">
+            メッセージ内容
+            <span className="text-gray-400 ml-1">（空欄ならデフォルトテンプレート使用）</span>
+          </label>
+          <div className="flex gap-2">
+            <button onClick={insertDefaultTemplate} className="text-xs text-blue-600 hover:text-blue-800">
+              デフォルトテンプレート挿入
+            </button>
+            <button onClick={() => setShowPreview(!showPreview)} className="text-xs text-blue-600 hover:text-blue-800">
+              {showPreview ? 'プレビューを閉じる' : 'プレビュー'}
+            </button>
+          </div>
+        </div>
+        <textarea rows={form.messageType === 'flex' ? 12 : 6} value={form.messageContent}
+          onChange={e => setForm(f => ({ ...f, messageContent: e.target.value }))}
+          placeholder={form.messageType === 'flex' ? 'Flex JSON（空欄ならデフォルト）' : 'テキスト（空欄ならデフォルト）'}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono" />
+        <p className="text-xs text-gray-400 mt-1">
+          変数: {'{{name}}'} {'{{date}}'} {'{{time}}'} {'{{endTime}}'} {'{{serviceName}}'} {'{{bookingId}}'} {'{{cancelUrl}}'} {'{{bookingData.phone}}'} {'{{bookingData.email}}'}
+        </p>
+      </div>
+
+      {/* Preview */}
+      {showPreview && (
+        <div className="card p-4 bg-gray-50">
+          <p className="text-xs font-medium text-gray-500 mb-2">プレビュー（サンプル値で表示）</p>
+          {form.messageType === 'text' ? (
+            <div className="bg-white rounded-lg p-4 text-sm whitespace-pre-wrap border border-gray-200">
+              {previewContent || DEFAULT_TEXT_TEMPLATE.replace(/\{\{(\w+)\}\}/g, (_, k) => SAMPLE_VARS[`{{${k}}}`] ?? `{{${k}}}`)}
+            </div>
+          ) : flexPreviewObj ? (
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <pre className="text-xs overflow-auto max-h-64">{JSON.stringify(flexPreviewObj, null, 2)}</pre>
+            </div>
+          ) : (
+            <div className="bg-white rounded-lg p-4 text-sm text-gray-500 border border-gray-200">
+              {form.messageContent ? 'JSONが不正です' : 'デフォルトのFlexテンプレートが使用されます'}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Save */}
+      <div className="flex justify-end">
+        <button onClick={handleSave} disabled={saving}
+          className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition-colors">
+          {saving ? '保存中...' : '保存'}
+        </button>
+      </div>
     </div>
   )
 }

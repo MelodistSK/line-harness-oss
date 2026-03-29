@@ -20,6 +20,11 @@ import {
   createCalendarService,
   updateCalendarService,
   deleteCalendarService,
+  getBookingReminders,
+  getBookingReminderById,
+  createBookingReminder,
+  updateBookingReminder,
+  deleteBookingReminder,
   getFriendById,
   toJstString,
 } from '@line-crm/db';
@@ -693,6 +698,222 @@ calendar.delete('/api/calendar/book/:id', async (c) => {
     return c.json({ success: true, data: null });
   } catch (err) {
     console.error('DELETE /api/calendar/book/:id error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+// ---------- Booking detail (public, for cancel page) ----------
+
+calendar.get('/api/calendar/book/:id/detail', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const booking = await getCalendarBookingById(c.env.DB, id);
+    if (!booking) return c.json({ success: false, error: 'Booking not found' }, 404);
+
+    let serviceName: string | null = null;
+    if (booking.service_id) {
+      const svc = await getCalendarServiceById(c.env.DB, booking.service_id);
+      if (svc) serviceName = svc.name;
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        id: booking.id,
+        title: booking.title,
+        startAt: booking.start_at,
+        endAt: booking.end_at,
+        status: booking.status,
+        serviceId: booking.service_id,
+        serviceName,
+        bookingData: booking.booking_data ? JSON.parse(booking.booking_data) : null,
+      },
+    });
+  } catch (err) {
+    console.error('GET /api/calendar/book/:id/detail error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+// ---------- Booking cancel (public, from LIFF cancel page) ----------
+
+calendar.post('/api/calendar/book/:id/cancel', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const booking = await getCalendarBookingById(c.env.DB, id);
+    if (!booking) return c.json({ success: false, error: 'Booking not found' }, 404);
+    if (booking.status === 'cancelled') return c.json({ success: true, data: null });
+
+    // Delete Google Calendar event
+    if (booking.event_id) {
+      let gcal: GoogleCalendarClient | null = null;
+      if (booking.service_id) {
+        const service = await getCalendarServiceById(c.env.DB, booking.service_id);
+        if (service) gcal = createGCalClientFromService(service);
+      }
+      if (!gcal) {
+        const settings = await getCalendarSettings(c.env.DB);
+        if (settings) gcal = createGCalClient(settings);
+      }
+      if (gcal) {
+        try { await gcal.deleteEvent(booking.event_id); } catch (err) {
+          console.warn('Google Calendar deleteEvent on cancel:', err);
+        }
+      }
+    }
+
+    await updateCalendarBookingStatus(c.env.DB, id, 'cancelled');
+
+    // Fire booking_cancelled event
+    try {
+      const { fireEvent } = await import('../services/event-bus.js');
+      let serviceName: string | null = null;
+      if (booking.service_id) {
+        const svc = await getCalendarServiceById(c.env.DB, booking.service_id);
+        if (svc) serviceName = svc.name;
+      }
+      await fireEvent(c.env.DB, 'booking_cancelled', {
+        friendId: booking.friend_id ?? undefined,
+        eventData: {
+          bookingId: booking.id,
+          title: booking.title,
+          startAt: booking.start_at,
+          endAt: booking.end_at,
+          serviceId: booking.service_id,
+          serviceName,
+          bookingData: booking.booking_data ? JSON.parse(booking.booking_data) : null,
+        },
+      }, c.env.LINE_CHANNEL_ACCESS_TOKEN);
+    } catch (err) {
+      console.warn('booking_cancelled fireEvent failed:', err);
+    }
+
+    return c.json({ success: true, data: null });
+  } catch (err) {
+    console.error('POST /api/calendar/book/:id/cancel error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+// ---------- Booking Reminders CRUD (auth required) ----------
+
+calendar.get('/api/calendar/reminders', async (c) => {
+  try {
+    const serviceId = c.req.query('serviceId') ?? undefined;
+    const items = await getBookingReminders(c.env.DB, serviceId);
+    return c.json({
+      success: true,
+      data: items.map((r) => ({
+        id: r.id,
+        serviceId: r.service_id,
+        timingValue: r.timing_value,
+        timingUnit: r.timing_unit,
+        messageType: r.message_type,
+        messageContent: r.message_content,
+        includeCancelButton: Boolean(r.include_cancel_button),
+        isActive: Boolean(r.is_active),
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+      })),
+    });
+  } catch (err) {
+    console.error('GET /api/calendar/reminders error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+calendar.post('/api/calendar/reminders', async (c) => {
+  try {
+    const body = await c.req.json<{
+      serviceId?: string | null;
+      timingValue: number;
+      timingUnit: string;
+      messageType?: string;
+      messageContent?: string;
+      includeCancelButton?: boolean;
+      isActive?: boolean;
+    }>();
+    if (!body.timingValue || !body.timingUnit) {
+      return c.json({ success: false, error: 'timingValue and timingUnit are required' }, 400);
+    }
+    const item = await createBookingReminder(c.env.DB, {
+      serviceId: body.serviceId,
+      timingValue: body.timingValue,
+      timingUnit: body.timingUnit,
+      messageType: body.messageType,
+      messageContent: body.messageContent ?? '',
+      includeCancelButton: body.includeCancelButton === false ? 0 : 1,
+      isActive: body.isActive === false ? 0 : 1,
+    });
+    return c.json({
+      success: true,
+      data: {
+        id: item.id,
+        serviceId: item.service_id,
+        timingValue: item.timing_value,
+        timingUnit: item.timing_unit,
+        messageType: item.message_type,
+        messageContent: item.message_content,
+        includeCancelButton: Boolean(item.include_cancel_button),
+        isActive: Boolean(item.is_active),
+      },
+    }, 201);
+  } catch (err) {
+    console.error('POST /api/calendar/reminders error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+calendar.put('/api/calendar/reminders/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json<{
+      serviceId?: string | null;
+      timingValue?: number;
+      timingUnit?: string;
+      messageType?: string;
+      messageContent?: string;
+      includeCancelButton?: boolean;
+      isActive?: boolean;
+    }>();
+    const updated = await updateBookingReminder(c.env.DB, id, {
+      serviceId: body.serviceId,
+      timingValue: body.timingValue,
+      timingUnit: body.timingUnit,
+      messageType: body.messageType,
+      messageContent: body.messageContent,
+      includeCancelButton: body.includeCancelButton !== undefined ? (body.includeCancelButton ? 1 : 0) : undefined,
+      isActive: body.isActive !== undefined ? (body.isActive ? 1 : 0) : undefined,
+    });
+    if (!updated) return c.json({ success: false, error: 'Not found' }, 404);
+    return c.json({
+      success: true,
+      data: {
+        id: updated.id,
+        serviceId: updated.service_id,
+        timingValue: updated.timing_value,
+        timingUnit: updated.timing_unit,
+        messageType: updated.message_type,
+        messageContent: updated.message_content,
+        includeCancelButton: Boolean(updated.include_cancel_button),
+        isActive: Boolean(updated.is_active),
+      },
+    });
+  } catch (err) {
+    console.error('PUT /api/calendar/reminders/:id error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+calendar.delete('/api/calendar/reminders/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const item = await getBookingReminderById(c.env.DB, id);
+    if (!item) return c.json({ success: false, error: 'Not found' }, 404);
+    await deleteBookingReminder(c.env.DB, id);
+    return c.json({ success: true, data: null });
+  } catch (err) {
+    console.error('DELETE /api/calendar/reminders/:id error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
 });

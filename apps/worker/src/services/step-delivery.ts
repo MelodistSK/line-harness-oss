@@ -9,6 +9,7 @@ import {
 import type { LineClient } from '@line-crm/line-sdk';
 import type { Message } from '@line-crm/line-sdk';
 import { jitterDeliveryTime, addJitter, sleep } from './stealth.js';
+import { personalizeTrackingUrls } from './auto-track.js';
 
 /**
  * Replace template variables in message content.
@@ -202,7 +203,9 @@ async function processSingleDelivery(
     trackedType = tracked.messageType;
     trackedContent = tracked.content;
   }
-  const message = buildMessage(trackedType, trackedContent);
+  // Embed lu={lineUserId} in tracking URLs so clicks are attributed without LIFF redirect
+  const personalizedContent = personalizeTrackingUrls(trackedContent, friend.line_user_id);
+  const message = buildMessage(trackedType, personalizedContent);
   await lineClient.pushMessage(friend.line_user_id, [message]);
 
   // Log outgoing message

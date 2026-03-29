@@ -37,7 +37,9 @@ export async function processReminderDeliveries(
       }
 
       for (const step of fr.steps) {
-        const message = buildMessage(step.message_type, step.message_content);
+        const { personalizeTrackingUrls } = await import('./auto-track.js');
+        const personalizedContent = personalizeTrackingUrls(step.message_content, friend.line_user_id);
+        const message = buildMessage(step.message_type, personalizedContent);
         await lineClient.pushMessage(friend.line_user_id, [message]);
 
         // メッセージログに記録

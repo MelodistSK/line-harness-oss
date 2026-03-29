@@ -100,6 +100,18 @@ function textToFlex(
   return JSON.stringify(bubble);
 }
 
+/**
+ * Append ?lu={lineUserId} to /t/{uuid} tracking URLs in message content.
+ * Call this just before pushMessage when sending to an individual friend
+ * so the click handler can identify the friend without the LIFF redirect flow.
+ */
+export function personalizeTrackingUrls(content: string, lineUserId: string): string {
+  // Match full tracking URLs ending with /t/{uuid}
+  const re = /(https?:\/\/[^\s"'<>]*\/t\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?![?&]lu=)/g;
+  const lu = encodeURIComponent(lineUserId);
+  return content.replace(re, (match) => `${match}?lu=${lu}`);
+}
+
 export interface AutoTrackResult {
   messageType: string;
   content: string;

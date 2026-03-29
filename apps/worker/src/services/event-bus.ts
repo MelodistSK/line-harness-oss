@@ -262,16 +262,18 @@ async function executeAction(
         .first<{ line_user_id: string }>();
       if (!friend) break;
       const lineClient = new LineClient(lineAccessToken);
+      const { personalizeTrackingUrls } = await import('./auto-track.js');
       const msgType = action.params.messageType || 'text';
       if (msgType === 'flex') {
-        const contents = JSON.parse(action.params.content);
+        const personalizedContent = personalizeTrackingUrls(action.params.content, friend.line_user_id);
+        const contents = JSON.parse(personalizedContent);
         await lineClient.pushMessage(friend.line_user_id, [
           { type: 'flex', altText: action.params.altText || 'Message', contents },
         ]);
       } else {
-        // Default: text message
+        const personalizedText = personalizeTrackingUrls(action.params.content, friend.line_user_id);
         await lineClient.pushMessage(friend.line_user_id, [
-          { type: 'text', text: action.params.content },
+          { type: 'text', text: personalizedText },
         ]);
       }
       break;

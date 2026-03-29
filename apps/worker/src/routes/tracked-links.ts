@@ -11,6 +11,7 @@ import {
 } from '@line-crm/db';
 import { addTagToFriend, enrollFriendInScenario } from '@line-crm/db';
 import type { TrackedLink } from '@line-crm/db';
+import { fireEvent } from '../services/event-bus.js';
 import type { Env } from '../index.js';
 
 const trackedLinks = new Hono<Env>();
@@ -180,18 +181,20 @@ trackedLinks.get('/t/:linkId', async (c) => {
 
         // Run automatic actions if a friend is identified
         if (friendId) {
-          const actions: Promise<unknown>[] = [];
-
           if (link.tag_id) {
-            actions.push(addTagToFriend(c.env.DB, friendId, link.tag_id));
+            await addTagToFriend(c.env.DB, friendId, link.tag_id);
+            await fireEvent(c.env.DB, 'tag_added', {
+              friendId,
+              eventData: { tagId: link.tag_id, source: 'tracked_link', trackedLinkId: linkId },
+            }, c.env.LINE_CHANNEL_ACCESS_TOKEN);
           }
 
           if (link.scenario_id) {
-            actions.push(enrollFriendInScenario(c.env.DB, friendId, link.scenario_id));
-          }
-
-          if (actions.length > 0) {
-            await Promise.allSettled(actions);
+            await enrollFriendInScenario(c.env.DB, friendId, link.scenario_id);
+            await fireEvent(c.env.DB, 'scenario_started', {
+              friendId,
+              eventData: { scenarioId: link.scenario_id, source: 'tracked_link', trackedLinkId: linkId },
+            }, c.env.LINE_CHANNEL_ACCESS_TOKEN);
           }
         }
       } catch (err) {

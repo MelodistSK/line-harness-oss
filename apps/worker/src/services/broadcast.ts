@@ -10,6 +10,7 @@ import type { LineClient } from '@line-crm/line-sdk';
 import type { Message } from '@line-crm/line-sdk';
 import { calculateStaggerDelay, sleep, addMessageVariation } from './stealth.js';
 import { buildMessage } from './step-delivery.js';
+import { personalizeTrackingUrls } from './auto-track.js';
 import type { Friend } from '@line-crm/db';
 
 const MULTICAST_BATCH_SIZE = 500;
@@ -76,8 +77,9 @@ export async function processBroadcastSend(
       for (let i = 0; i < followingFriends.length; i++) {
         const friend = followingFriends[i];
         const expandedContent = expandVariables(finalContent, friend);
-        console.log(`[broadcast] friend=${friend.display_name} expanded=${expandedContent.slice(0, 100)}`);
-        const personalMessage = buildMessage(finalType, expandedContent);
+        const personalizedContent = personalizeTrackingUrls(expandedContent, friend.line_user_id);
+        console.log(`[broadcast] friend=${friend.display_name} expanded=${personalizedContent.slice(0, 100)}`);
+        const personalMessage = buildMessage(finalType, personalizedContent);
 
         if (i > 0 && i % MULTICAST_BATCH_SIZE === 0) {
           const batchIndex = Math.floor(i / MULTICAST_BATCH_SIZE);
@@ -119,8 +121,9 @@ export async function processBroadcastSend(
         for (let i = 0; i < followingFriends.length; i++) {
           const friend = followingFriends[i];
           const expandedContent = expandVariables(finalContent, friend);
-          console.log(`[broadcast] friend=${friend.display_name} uid=${friend.line_user_id} expanded=${expandedContent.slice(0, 100)}`);
-          const personalMessage = buildMessage(finalType, expandedContent);
+          const personalizedContent = personalizeTrackingUrls(expandedContent, friend.line_user_id);
+          console.log(`[broadcast] friend=${friend.display_name} uid=${friend.line_user_id} expanded=${personalizedContent.slice(0, 100)}`);
+          const personalMessage = buildMessage(finalType, personalizedContent);
 
           // Stealth: stagger every 500 messages
           if (i > 0 && i % MULTICAST_BATCH_SIZE === 0) {

@@ -240,9 +240,11 @@ chats.post('/api/chats/:id/send', async (c) => {
 
     const messageType = body.messageType ?? 'text';
 
-    // Use buildMessage to build LINE API message for all types
+    // Personalize tracking URLs with friend's LINE user ID, then build message
     const { buildMessage } = await import('../services/step-delivery.js');
-    const message = buildMessage(messageType, body.content);
+    const { personalizeTrackingUrls } = await import('../services/auto-track.js');
+    const personalizedContent = personalizeTrackingUrls(body.content, friend.line_user_id);
+    const message = buildMessage(messageType, personalizedContent);
     await lineClient.pushMessage(friend.line_user_id, [message]);
 
     // LINE送信成功 — 後処理はベストエフォート（失敗しても200を返す）
