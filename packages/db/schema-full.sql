@@ -395,15 +395,41 @@ CREATE TABLE IF NOT EXISTS calendar_bookings (
   status         TEXT NOT NULL DEFAULT 'confirmed' CHECK (status IN ('confirmed', 'cancelled', 'completed')),
   metadata       TEXT,
   booking_data   TEXT,
+  service_id     TEXT REFERENCES calendar_services(id) ON DELETE SET NULL,
   created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
   updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_calendar_bookings_friend ON calendar_bookings (friend_id);
 CREATE INDEX IF NOT EXISTS idx_calendar_bookings_start ON calendar_bookings (start_at);
+CREATE INDEX IF NOT EXISTS idx_calendar_bookings_service ON calendar_bookings (service_id);
 
 -- ============================================================
--- Calendar Settings
+-- Calendar Services (multi-service/multi-calendar booking)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS calendar_services (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  duration INTEGER NOT NULL DEFAULT 30,
+  google_client_email TEXT,
+  google_private_key TEXT,
+  google_calendar_id TEXT,
+  business_hours_start TEXT NOT NULL DEFAULT '09:00',
+  business_hours_end TEXT NOT NULL DEFAULT '18:00',
+  closed_days TEXT NOT NULL DEFAULT '["sun"]',
+  closed_dates TEXT NOT NULL DEFAULT '[]',
+  booking_fields TEXT NOT NULL DEFAULT '[{"name":"name","label":"お名前","required":true},{"name":"phone","label":"電話番号","required":true}]',
+  booking_reply_enabled INTEGER NOT NULL DEFAULT 1,
+  booking_reply_content TEXT,
+  max_advance_days INTEGER NOT NULL DEFAULT 30,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+);
+
+-- ============================================================
+-- Calendar Settings (legacy, single-service config)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS calendar_settings (
   id TEXT PRIMARY KEY,

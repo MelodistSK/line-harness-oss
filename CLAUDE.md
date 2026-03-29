@@ -377,14 +377,18 @@ WORKER_URL=http://localhost:8787
 - 全ページ日本語UI
 
 ### その他
-- **Google Calendar予約システム**:
+- **Google Calendar予約システム（複数サービス対応）**:
+  - **マルチサービス**: 「カット」「カラー」等メニューごとに独立したカレンダー・設定で予約管理
+  - `calendar_services` テーブル: サービスごとにGoogle接続情報・営業時間・休日・予約枠・フォーム項目を個別設定
   - サービスアカウントJWT認証（Web Crypto API、外部ライブラリ不要）
-  - 認証情報はDB（`calendar_settings`テーブル）に保存（環境変数不要）
-  - 管理画面: 接続設定・営業時間・休日・予約フォーム項目・予約一覧・空き状況プレビュー
-  - LIFF予約ページ: `/liff/booking`（インラインHTML、友だち追加フロー不要）
-  - 空きスロット計算: 営業時間 + 休日 + GCal FreeBusy + D1予約の4重照合
+  - 管理画面: サービス一覧カード表示 → 個別編集（接続設定・営業時間・休日・予約フォーム項目）
+  - LIFF予約ページ: `/liff/booking`（サービス選択 → 日付 → 時間 → フォーム → 確認 → 送信）
+    - サービスが1つのみの場合はサービス選択をスキップ
+    - URLパラメータ `?serviceId=xxx` で特定サービスに直接遷移
+  - 空きスロット計算: 営業時間 + 休日 + GCal FreeBusy + D1予約の4重照合（サービスごとに独立）
   - 二重予約防止: 予約作成時にGCal + D1の両方で再確認
-  - メッセージ種別「予約」: Flex自動生成、全送信画面で利用可能
+  - メッセージ種別「予約」: Flex自動生成、サービス指定可能、全送信画面で利用可能
+  - Webhook OUT: `booking_created` イベントに `serviceId` / `serviceName` / `calendarId` を含む
 - **アフィリエイト追跡**: クリックID・コミッション率・成果レポート
 - **広告プラットフォーム連携**: Facebook/Google Ads コンバージョンAPI
 - **アカウントヘルスモニタリング**: BAN検知（normal/warning/danger）
@@ -414,7 +418,7 @@ conversion_points, conversion_events
 affiliates, affiliate_clicks
 
 # Google Calendar
-google_calendar_connections, calendar_bookings, calendar_settings
+google_calendar_connections, calendar_bookings, calendar_settings, calendar_services
 
 # 決済
 stripe_events

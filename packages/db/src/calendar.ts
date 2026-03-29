@@ -24,8 +24,89 @@ export interface CalendarBookingRow {
   status: string;
   metadata: string | null;
   booking_data: string | null;
+  service_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// --- Calendar Services (multi-service support) ---
+
+export interface CalendarServiceRow {
+  id: string;
+  name: string;
+  description: string | null;
+  duration: number;
+  google_client_email: string | null;
+  google_private_key: string | null;
+  google_calendar_id: string | null;
+  business_hours_start: string;
+  business_hours_end: string;
+  closed_days: string;
+  closed_dates: string;
+  booking_fields: string;
+  booking_reply_enabled: number;
+  booking_reply_content: string | null;
+  max_advance_days: number;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getCalendarServices(db: D1Database): Promise<CalendarServiceRow[]> {
+  const result = await db.prepare('SELECT * FROM calendar_services ORDER BY created_at ASC').all<CalendarServiceRow>();
+  return result.results;
+}
+
+export async function getActiveCalendarServices(db: D1Database): Promise<CalendarServiceRow[]> {
+  const result = await db.prepare('SELECT * FROM calendar_services WHERE is_active = 1 ORDER BY created_at ASC').all<CalendarServiceRow>();
+  return result.results;
+}
+
+export async function getCalendarServiceById(db: D1Database, id: string): Promise<CalendarServiceRow | null> {
+  return db.prepare('SELECT * FROM calendar_services WHERE id = ?').bind(id).first<CalendarServiceRow>();
+}
+
+export async function createCalendarService(
+  db: D1Database,
+  input: Partial<Omit<CalendarServiceRow, 'id' | 'created_at' | 'updated_at'>> & { name: string },
+): Promise<CalendarServiceRow> {
+  const id = crypto.randomUUID();
+  const now = jstNow();
+  const cols = ['id', 'name', 'created_at', 'updated_at'];
+  const vals: unknown[] = [id, input.name, now, now];
+  for (const [key, val] of Object.entries(input)) {
+    if (key === 'name' || val === undefined) continue;
+    cols.push(key);
+    vals.push(val);
+  }
+  const placeholders = cols.map(() => '?').join(', ');
+  await db.prepare(`INSERT INTO calendar_services (${cols.join(', ')}) VALUES (${placeholders})`).bind(...vals).run();
+  return (await getCalendarServiceById(db, id))!;
+}
+
+export async function updateCalendarService(
+  db: D1Database,
+  id: string,
+  data: Partial<Omit<CalendarServiceRow, 'id' | 'created_at' | 'updated_at'>>,
+): Promise<CalendarServiceRow | null> {
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  for (const [key, val] of Object.entries(data)) {
+    if (val !== undefined) {
+      sets.push(`${key} = ?`);
+      values.push(val);
+    }
+  }
+  if (sets.length === 0) return getCalendarServiceById(db, id);
+  sets.push('updated_at = ?');
+  values.push(jstNow());
+  values.push(id);
+  await db.prepare(`UPDATE calendar_services SET ${sets.join(', ')} WHERE id = ?`).bind(...values).run();
+  return getCalendarServiceById(db, id);
+}
+
+export async function deleteCalendarService(db: D1Database, id: string): Promise<void> {
+  await db.prepare('DELETE FROM calendar_services WHERE id = ?').bind(id).run();
 }
 
 // --- 接続管理 ---
@@ -78,14 +159,14 @@ export async function getCalendarBookingById(db: D1Database, id: string): Promis
 
 export async function createCalendarBooking(
   db: D1Database,
-  input: { connectionId: string; friendId?: string; eventId?: string; title: string; startAt: string; endAt: string; metadata?: string; bookingData?: string },
+  input: { connectionId: string; friendId?: string; eventId?: string; title: string; startAt: string; endAt: string; metadata?: string; bookingData?: string; serviceId?: string },
 ): Promise<CalendarBookingRow> {
   const id = crypto.randomUUID();
   const now = jstNow();
   await db
-    .prepare(`INSERT INTO calendar_bookings (id, connection_id, friend_id, event_id, title, start_at, end_at, metadata, booking_data, created_at, updated_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .bind(id, input.connectionId, input.friendId ?? null, input.eventId ?? null, input.title, input.startAt, input.endAt, input.metadata ?? null, input.bookingData ?? null, now, now)
+    .prepare(`INSERT INTO calendar_bookings (id, connection_id, friend_id, event_id, title, start_at, end_at, metadata, booking_data, service_id, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(id, input.connectionId, input.friendId ?? null, input.eventId ?? null, input.title, input.startAt, input.endAt, input.metadata ?? null, input.bookingData ?? null, input.serviceId ?? null, now, now)
     .run();
   return (await getCalendarBookingById(db, id))!;
 }
@@ -110,7 +191,14 @@ export async function getBookingsInRange(db: D1Database, connectionId: string, s
 }
 
 /** 空きスロット計算用: 指定日範囲の予約一覧を取得（connection_id なし） */
-export async function getBookingsInDateRange(db: D1Database, startAt: string, endAt: string): Promise<CalendarBookingRow[]> {
+export async function getBookingsInDateRange(db: D1Database, startAt: string, endAt: string, serviceId?: string): Promise<CalendarBookingRow[]> {
+  if (serviceId) {
+    const result = await db
+      .prepare(`SELECT * FROM calendar_bookings WHERE start_at < ? AND end_at > ? AND status != 'cancelled' AND service_id = ? ORDER BY start_at ASC`)
+      .bind(endAt, startAt, serviceId)
+      .all<CalendarBookingRow>();
+    return result.results;
+  }
   const result = await db
     .prepare(`SELECT * FROM calendar_bookings WHERE start_at < ? AND end_at > ? AND status != 'cancelled' ORDER BY start_at ASC`)
     .bind(endAt, startAt)
@@ -121,7 +209,7 @@ export async function getBookingsInDateRange(db: D1Database, startAt: string, en
 /** Filter bookings by date range and optional status */
 export async function getCalendarBookingsFiltered(
   db: D1Database,
-  opts: { startDate?: string; endDate?: string; status?: string } = {},
+  opts: { startDate?: string; endDate?: string; status?: string; serviceId?: string } = {},
 ): Promise<CalendarBookingRow[]> {
   let sql = `SELECT * FROM calendar_bookings WHERE 1=1`;
   const params: unknown[] = [];
@@ -136,6 +224,10 @@ export async function getCalendarBookingsFiltered(
   if (opts.status) {
     sql += ` AND status = ?`;
     params.push(opts.status);
+  }
+  if (opts.serviceId) {
+    sql += ` AND service_id = ?`;
+    params.push(opts.serviceId);
   }
   sql += ` ORDER BY start_at ASC`;
   const result = await db.prepare(sql).bind(...params).all<CalendarBookingRow>();

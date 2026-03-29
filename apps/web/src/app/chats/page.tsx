@@ -99,14 +99,15 @@ function generateFormFlex(form: FormData): string {
   }, null, 2)
 }
 
-function generateBookingFlex(): string {
+function generateBookingFlex(serviceId?: string, serviceName?: string): string {
   const apiUrl = (process.env.NEXT_PUBLIC_API_URL || 'https://line-harness-mamayoro.s-kamiya.workers.dev').trim()
-  const liffUrl = `${apiUrl}/liff/booking`
+  const liffUrl = serviceId ? `${apiUrl}/liff/booking?serviceId=${serviceId}` : `${apiUrl}/liff/booking`
+  const title = serviceName ? `${serviceName}のご予約` : 'ご予約はこちら'
   return JSON.stringify({
     type: 'bubble',
     body: {
       type: 'box', layout: 'vertical', contents: [
-        { type: 'text', text: 'ご予約はこちら', weight: 'bold', size: 'lg', wrap: true },
+        { type: 'text', text: title, weight: 'bold', size: 'lg', wrap: true },
         { type: 'text', text: 'ご都合の良い日時をお選びください', color: '#666666', size: 'sm', wrap: true, margin: 'md' },
       ],
     },
@@ -253,12 +254,29 @@ function ChatComposer({ onSend, sending }: { onSend: (msgType: string, content: 
   const [selectedFormId, setSelectedFormId] = useState('')
   const [templatesList, setTemplatesList] = useState<TemplateData[]>([])
   const [showTemplateModal, setShowTemplateModal] = useState(false)
+  const [bookingServices, setBookingServices] = useState<{ id: string; name: string }[]>([])
+  const [selectedBookingServiceId, setSelectedBookingServiceId] = useState('')
 
   useEffect(() => { api.forms.list().then(r => { if (r.success) setFormsList(r.data) }).catch(() => {}) }, [])
+  useEffect(() => {
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
+    const apiKey = typeof window !== 'undefined' ? localStorage.getItem('lh_api_key') || '' : ''
+    fetch(`${API_URL}/api/calendar/services`, { headers: { Authorization: `Bearer ${apiKey}` } })
+      .then(r => r.json()).then((json: { success?: boolean; data?: { id: string; name: string; isActive: boolean }[] }) => {
+        if (json.success && Array.isArray(json.data)) {
+          const active = json.data.filter(s => s.isActive)
+          setBookingServices(active)
+          if (active.length === 1) setSelectedBookingServiceId(active[0].id)
+        }
+      }).catch(() => {})
+  }, [])
   useEffect(() => { if (showTemplateModal) api.templates.list().then(r => { if (r.success) setTemplatesList(r.data) }).catch(() => {}) }, [showTemplateModal])
   useEffect(() => {
-    if (msgType === 'booking') setContent(generateBookingFlex())
-  }, [msgType])
+    if (msgType === 'booking') {
+      const svc = bookingServices.find(s => s.id === selectedBookingServiceId)
+      setContent(generateBookingFlex(selectedBookingServiceId || undefined, svc?.name))
+    }
+  }, [msgType, selectedBookingServiceId, bookingServices])
   useEffect(() => {
     if (msgType === 'form' && selectedFormId) {
       const found = formsList.find(f => f.id === selectedFormId)
@@ -343,6 +361,12 @@ function ChatComposer({ onSend, sending }: { onSend: (msgType: string, content: 
 
       {msgType === 'booking' && (
         <div className="space-y-2">
+          {bookingServices.length > 1 && (
+            <select value={selectedBookingServiceId} onChange={e => setSelectedBookingServiceId(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+              <option value="">サービスを選択（全メニュー表示）</option>
+              {bookingServices.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          )}
           {!LIFF_ID && <p className="text-xs text-yellow-600 bg-yellow-50 px-3 py-2 rounded border border-yellow-200">NEXT_PUBLIC_LIFF_ID が未設定です</p>}
           {content && (() => { try { JSON.parse(content); return <FlexPreviewComponent content={content} maxWidth={280} /> } catch { return null } })()}
         </div>

@@ -51,6 +51,13 @@ body{font-family:'Hiragino Sans','Yu Gothic',system-ui,sans-serif;background:#f5
 @keyframes spin{to{transform:rotate(360deg)}}
 .err{color:#e53e3e;text-align:center;padding:20px}
 .info{font-size:12px;color:#999;text-align:center;margin-top:8px}
+.svc-list{display:flex;flex-direction:column;gap:10px}
+.svc-card{background:#fff;border:1.5px solid #e0e0e0;border-radius:12px;padding:16px;cursor:pointer;transition:border-color .2s}
+.svc-card:hover{border-color:#06C755}
+.svc-card.sel{border-color:#06C755;background:#e8faf0}
+.svc-name{font-size:15px;font-weight:700;color:#333}
+.svc-desc{font-size:12px;color:#999;margin-top:2px}
+.svc-meta{font-size:12px;color:#06C755;margin-top:6px;font-weight:600}
 </style>
 </head>
 <body>
@@ -60,9 +67,14 @@ body{font-family:'Hiragino Sans','Yu Gothic',system-ui,sans-serif;background:#f5
 const LIFF_ID="${liffId}";
 const API="${apiUrl}";
 const WEEKDAYS=["日","月","火","水","木","金","土"];
-let profile=null,friendId=null,settings=null;
+let profile=null,friendId=null,settings=null,allServices=[];
+let selService=null;
 let year=new Date().getFullYear(),month=new Date().getMonth();
-let selDate=null,slots=[],selSlot=null,formData={},step="calendar";
+let selDate=null,slots=[],selSlot=null,formData={},step="service";
+
+// Check URL param for pre-selected service
+const urlParams=new URLSearchParams(window.location.search);
+const preServiceId=urlParams.get("serviceId");
 
 function $(s){return document.querySelector(s)}
 function app(){return $("#app")}
@@ -75,16 +87,29 @@ function fmtTime(iso){try{const d=new Date(iso);return pad(d.getHours())+":"+pad
 function isToday(y,m,d){const n=new Date();return n.getFullYear()===y&&n.getMonth()===m&&n.getDate()===d}
 function isPast(y,m,d){const n=new Date();n.setHours(0,0,0,0);return new Date(y,m,d)<n}
 
-function closedDays(){if(!settings)return[];try{return Array.isArray(settings.closedDays)?settings.closedDays:JSON.parse(settings.closedDays||"[]")}catch{return[]}}
-function closedDates(){if(!settings)return[];try{return Array.isArray(settings.closedDates)?settings.closedDates:JSON.parse(settings.closedDates||"[]")}catch{return[]}}
+function curSettings(){
+  if(selService)return selService;
+  return settings;
+}
+
+function closedDays(){var s=curSettings();if(!s)return[];try{return Array.isArray(s.closedDays)?s.closedDays:JSON.parse(s.closedDays||"[]")}catch{return[]}}
+function closedDates(){var s=curSettings();if(!s)return[];try{return Array.isArray(s.closedDates)?s.closedDates:JSON.parse(s.closedDates||"[]")}catch{return[]}}
 function isClosed(y,m,d){
   const dow=["sun","mon","tue","wed","thu","fri","sat"][new Date(y,m,d).getDay()];
   if(closedDays().includes(dow))return true;
   if(closedDates().includes(dateStr(y,m,d)))return true;
-  const maxDays=settings?.maxAdvanceDays||30;
+  var s=curSettings();
+  const maxDays=s?.maxAdvanceDays||30;
   const maxDate=new Date();maxDate.setDate(maxDate.getDate()+maxDays);
   if(new Date(y,m,d)>maxDate)return true;
   return false;
+}
+
+function renderServiceSelection(){
+  if(!allServices.length)return'<div class="card"><p class="info">予約可能なサービスがありません</p></div>';
+  return'<div class="card"><p style="font-size:15px;font-weight:700;margin-bottom:12px">メニューを選択</p><div class="svc-list">'+allServices.map(function(s){
+    return'<div class="svc-card" data-svc="'+s.id+'"><div class="svc-name">'+esc(s.name)+'</div>'+(s.description?'<div class="svc-desc">'+esc(s.description)+'</div>':'')+'<div class="svc-meta">'+s.duration+'分</div></div>';
+  }).join("")+'</div></div>';
 }
 
 function renderCal(){
@@ -106,7 +131,8 @@ function renderCal(){
     const disabled=past||closed;
     days+='<button class="'+cls+'" '+(disabled?"disabled":'data-d="'+ds+'"')+'>'+d+'</button>';
   }
-  return '<div class="card"><div class="cal-header"><button class="cal-nav" data-a="prev">&lt;</button><span class="cal-title">'+year+"年"+(month+1)+'月</span><button class="cal-nav" data-a="next">&gt;</button></div><div class="cal-weekdays">'+WEEKDAYS.map((w,i)=>'<span class="'+(i===0?"sun":i===6?"sat":"")+'">'+w+"</span>").join("")+'</div><div class="cal-days">'+days+"</div></div>";
+  var svcLabel=selService?'<p style="font-size:13px;color:#06C755;font-weight:600;margin-bottom:8px">'+esc(selService.name)+' ('+selService.duration+'分)</p>':"";
+  return '<div class="card">'+svcLabel+'<div class="cal-header"><button class="cal-nav" data-a="prev">&lt;</button><span class="cal-title">'+year+"年"+(month+1)+'月</span><button class="cal-nav" data-a="next">&gt;</button></div><div class="cal-weekdays">'+WEEKDAYS.map((w,i)=>'<span class="'+(i===0?"sun":i===6?"sat":"")+'">'+w+"</span>").join("")+'</div><div class="cal-days">'+days+"</div></div>";
 }
 
 function renderSlots(){
@@ -119,19 +145,26 @@ function renderSlots(){
 }
 
 function renderForm(){
-  const fields=(settings?.bookingFields||[]).map(f=>'<div class="form-field"><label>'+esc(f.label)+(f.required?' <span style="color:#e53e3e">*</span>':"")+'</label><input data-f="'+f.name+'" value="'+esc(formData[f.name]||"")+'" placeholder="'+esc(f.label)+'"></div>').join("");
-  return'<div class="card"><p style="font-size:15px;font-weight:700;margin-bottom:4px">お客様情報</p><p class="info" style="margin-bottom:16px">'+fmtDate(selDate)+" "+fmtTime(selSlot.startAt)+" - "+fmtTime(selSlot.endAt)+'</p>'+fields+'<button class="btn btn-primary" id="toConfirm">確認画面へ</button><button class="btn btn-secondary" id="backCal" style="margin-top:8px">戻る</button></div>';
+  var cs=curSettings();
+  const fields=(cs?.bookingFields||[]).map(f=>'<div class="form-field"><label>'+esc(f.label)+(f.required?' <span style="color:#e53e3e">*</span>':"")+'</label><input data-f="'+f.name+'" value="'+esc(formData[f.name]||"")+'" placeholder="'+esc(f.label)+'"></div>').join("");
+  return'<div class="card"><p style="font-size:15px;font-weight:700;margin-bottom:4px">お客様情報</p><p class="info" style="margin-bottom:16px">'+(selService?esc(selService.name)+" / ":"")+fmtDate(selDate)+" "+fmtTime(selSlot.startAt)+" - "+fmtTime(selSlot.endAt)+'</p>'+fields+'<button class="btn btn-primary" id="toConfirm">確認画面へ</button><button class="btn btn-secondary" id="backCal" style="margin-top:8px">戻る</button></div>';
 }
 
 function renderConfirm(){
-  const rows=[{l:"日付",v:fmtDate(selDate)},{l:"時間",v:fmtTime(selSlot.startAt)+" - "+fmtTime(selSlot.endAt)}];
-  (settings?.bookingFields||[]).forEach(f=>{if(formData[f.name])rows.push({l:f.label,v:formData[f.name]})});
+  var rows=[];
+  if(selService)rows.push({l:"メニュー",v:selService.name});
+  rows.push({l:"日付",v:fmtDate(selDate)},{l:"時間",v:fmtTime(selSlot.startAt)+" - "+fmtTime(selSlot.endAt)});
+  var cs=curSettings();
+  (cs?.bookingFields||[]).forEach(f=>{if(formData[f.name])rows.push({l:f.label,v:formData[f.name]})});
   return'<div class="card"><p style="font-size:15px;font-weight:700;text-align:center;margin-bottom:16px">予約内容の確認</p>'+rows.map(r=>'<div class="confirm-row"><span class="label">'+esc(r.l)+'</span><span class="val">'+esc(r.v)+"</span></div>").join("")+'<button class="btn btn-primary" id="submitBtn">予約を確定する</button><button class="btn btn-secondary" id="backForm" style="margin-top:8px">戻る</button></div>';
 }
 
 function render(){
   let html='<div class="header"><h1>予約</h1><p>ご希望の日時をお選びください</p></div>';
-  if(step==="calendar"){
+  if(step==="service"){
+    html+=renderServiceSelection();
+  }else if(step==="calendar"){
+    if(allServices.length>1)html+='<p style="text-align:center;margin-bottom:8px"><a href="#" id="backToSvc" style="font-size:13px;color:#06C755">&larr; メニュー選択に戻る</a></p>';
     html+=renderCal()+renderSlots();
   }else if(step==="form"){
     html=renderForm();
@@ -143,7 +176,8 @@ function render(){
 }
 
 function renderSuccess(){
-  app().innerHTML='<div class="card" style="text-align:center;padding:32px 24px"><div class="success-icon">✓</div><h2 style="color:#06C755;margin-bottom:16px">予約が完了しました</h2><div class="confirm-row"><span class="label">日付</span><span class="val">'+fmtDate(selDate)+'</span></div><div class="confirm-row"><span class="label">時間</span><span class="val">'+fmtTime(selSlot.startAt)+" - "+fmtTime(selSlot.endAt)+'</span></div><p style="font-size:14px;color:#666;margin-top:16px;line-height:1.6">ご予約ありがとうございます。<br>当日のお越しをお待ちしております。</p><button class="btn btn-secondary" id="closeBtn" style="margin-top:20px">閉じる</button></div>';
+  var svcRow=selService?'<div class="confirm-row"><span class="label">メニュー</span><span class="val">'+esc(selService.name)+'</span></div>':"";
+  app().innerHTML='<div class="card" style="text-align:center;padding:32px 24px"><div class="success-icon">✓</div><h2 style="color:#06C755;margin-bottom:16px">予約が完了しました</h2>'+svcRow+'<div class="confirm-row"><span class="label">日付</span><span class="val">'+fmtDate(selDate)+'</span></div><div class="confirm-row"><span class="label">時間</span><span class="val">'+fmtTime(selSlot.startAt)+" - "+fmtTime(selSlot.endAt)+'</span></div><p style="font-size:14px;color:#666;margin-top:16px;line-height:1.6">ご予約ありがとうございます。<br>当日のお越しをお待ちしております。</p><button class="btn btn-secondary" id="closeBtn" style="margin-top:20px">閉じる</button></div>';
   const cb=document.getElementById("closeBtn");
   if(cb)cb.onclick=function(){try{liff.closeWindow()}catch{window.close()}};
 }
@@ -151,10 +185,22 @@ function renderSuccess(){
 function renderErr(msg){
   app().innerHTML='<div class="card" style="text-align:center"><h2 style="color:#e53e3e">エラー</h2><p class="err">'+esc(msg)+'</p><button class="btn btn-secondary" id="retryBtn" style="margin-top:16px">やり直す</button></div>';
   const rb=document.getElementById("retryBtn");
-  if(rb)rb.onclick=function(){selDate=null;selSlot=null;slots=[];step="calendar";render()};
+  if(rb)rb.onclick=function(){selDate=null;selSlot=null;slots=[];step=allServices.length>1?"service":"calendar";render()};
 }
 
 function bind(){
+  // Service selection
+  document.querySelectorAll(".svc-card[data-svc]").forEach(function(b){
+    b.addEventListener("click",function(){
+      var sid=b.dataset.svc;
+      selService=allServices.find(function(s){return s.id===sid})||null;
+      selDate=null;selSlot=null;slots=[];formData={};
+      step="calendar";render();
+    });
+  });
+  // Back to service selection
+  var bts=document.getElementById("backToSvc");
+  if(bts)bts.onclick=function(e){e.preventDefault();selService=null;selDate=null;selSlot=null;slots=[];step="service";render()};
   // Calendar nav
   document.querySelectorAll(".cal-nav").forEach(function(b){
     b.addEventListener("click",function(){
@@ -174,7 +220,8 @@ function bind(){
     b.addEventListener("click",function(){
       try{selSlot=JSON.parse(b.dataset.s)}catch{}
       if(profile&&!formData.name)formData.name=profile.displayName;
-      var fields=settings?.bookingFields||[];
+      var cs=curSettings();
+      var fields=cs?.bookingFields||[];
       step=fields.length>0?"form":"confirm";
       render();
     });
@@ -186,14 +233,15 @@ function bind(){
   // Form buttons
   var tc=document.getElementById("toConfirm");
   if(tc)tc.onclick=function(){
-    var fields=settings?.bookingFields||[];
+    var cs=curSettings();
+    var fields=cs?.bookingFields||[];
     for(var i=0;i<fields.length;i++){if(fields[i].required&&!(formData[fields[i].name]||"").trim()){alert(fields[i].label+"を入力してください");return}}
     step="confirm";render();
   };
   var bc=document.getElementById("backCal");
   if(bc)bc.onclick=function(){step="calendar";render()};
   var bf=document.getElementById("backForm");
-  if(bf)bf.onclick=function(){step=(settings?.bookingFields||[]).length>0?"form":"calendar";render()};
+  if(bf)bf.onclick=function(){var cs=curSettings();step=(cs?.bookingFields||[]).length>0?"form":"calendar";render()};
   var sb=document.getElementById("submitBtn");
   if(sb)sb.onclick=submitBooking;
 }
@@ -201,7 +249,8 @@ function bind(){
 async function loadSlots(date){
   app().querySelector(".card:last-child")?.insertAdjacentHTML("beforeend",'<div class="loading"><div class="spinner"></div></div>');
   try{
-    var res=await api("/api/calendar/available?date="+date);
+    var svcParam=selService?"&serviceId="+selService.id:"";
+    var res=await api("/api/calendar/available?date="+date+svcParam);
     var json=await res.json();
     if(json.success){
       var d=json.data;
@@ -215,7 +264,25 @@ async function loadSettings(){
   try{
     var res=await api("/api/calendar/settings-public");
     var json=await res.json();
-    if(json.success&&json.data)settings=json.data;
+    if(json.success&&json.data){
+      settings=json.data;
+      if(json.data.services&&json.data.services.length>0){
+        allServices=json.data.services;
+        // If pre-selected via URL param or only 1 service, skip selection
+        if(preServiceId){
+          var pre=allServices.find(function(s){return s.id===preServiceId});
+          if(pre){selService=pre;step="calendar";return}
+        }
+        if(allServices.length===1){
+          selService=allServices[0];step="calendar";
+        }else{
+          step="service";
+        }
+      }else{
+        // Legacy mode: no services, go directly to calendar
+        step="calendar";
+      }
+    }
   }catch{}
 }
 
@@ -224,6 +291,7 @@ async function submitBooking(){
   if(sb){sb.disabled=true;sb.textContent="送信中..."}
   try{
     var body={date:selDate,startTime:selSlot.startAt,endTime:selSlot.endAt,bookingData:formData};
+    if(selService)body.serviceId=selService.id;
     if(friendId)body.friendId=friendId;
     if(profile)body.bookingData={...formData,lineDisplayName:profile.displayName};
     var res=await api("/api/calendar/book",{method:"POST",body:JSON.stringify(body)});
