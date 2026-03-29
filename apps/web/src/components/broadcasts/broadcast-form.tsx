@@ -5,6 +5,7 @@ import type { Tag } from '@line-crm/shared'
 import { api, type ApiBroadcast } from '@/lib/api'
 import FlexPreviewComponent from '@/components/flex-preview'
 import MediaUrlInput from '@/components/media-url-input'
+import TrackingLinkPicker from '@/components/tracking-link-picker'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -332,6 +333,7 @@ export default function BroadcastForm({ tags, onSuccess, onCancel, editBroadcast
 
   const [showTemplateModal, setShowTemplateModal] = useState(false)
   const [templatesList, setTemplatesList] = useState<TemplateData[]>([])
+  const [showTrackingPicker, setShowTrackingPicker] = useState(false)
 
   const [showTestSend, setShowTestSend] = useState(false)
   const [friendsList, setFriendsList] = useState<FriendData[]>([])
@@ -513,13 +515,12 @@ export default function BroadcastForm({ tags, onSuccess, onCancel, editBroadcast
             <label className="block text-xs font-medium text-gray-600">
               メッセージ内容 <span className="text-red-500">*</span>
             </label>
-            <button
-              type="button"
-              onClick={() => setShowTemplateModal(true)}
-              className="text-xs text-blue-600 hover:text-blue-700"
-            >
-              テンプレートから挿入
-            </button>
+            <div className="flex gap-3">
+              {form.messageType === 'text' && (
+                <button type="button" onClick={() => setShowTrackingPicker(true)} className="text-xs text-green-600 hover:text-green-700">リンク挿入</button>
+              )}
+              <button type="button" onClick={() => setShowTemplateModal(true)} className="text-xs text-blue-600 hover:text-blue-700">テンプレートから挿入</button>
+            </div>
           </div>
 
           {/* ── Booking ── */}
@@ -744,6 +745,12 @@ export default function BroadcastForm({ tags, onSuccess, onCancel, editBroadcast
       </div>
 
       {/* ── Template modal ── */}
+      {showTrackingPicker && (
+        <TrackingLinkPicker
+          onSelect={(url) => { setForm({ ...form, messageContent: form.messageContent + url }); setShowTrackingPicker(false) }}
+          onClose={() => setShowTrackingPicker(false)}
+        />
+      )}
       {showTemplateModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[70vh] flex flex-col">

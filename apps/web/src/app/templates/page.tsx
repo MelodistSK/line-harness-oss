@@ -6,6 +6,7 @@ import Header from '@/components/layout/header'
 import CcPromptButton from '@/components/cc-prompt-button'
 import FlexPreviewComponent from '@/components/flex-preview'
 import MediaUrlInput from '@/components/media-url-input'
+import TrackingLinkPicker from '@/components/tracking-link-picker'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -222,6 +223,7 @@ export default function TemplatesPage() {
   const [quickReplyItems, setQuickReplyItems] = useState<QuickReplyItem[]>([])
   const [formsList, setFormsList] = useState<FormData[]>([])
   const [selectedFormId, setSelectedFormId] = useState('')
+  const [showTrackingPicker, setShowTrackingPicker] = useState(false)
 
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
@@ -428,7 +430,12 @@ export default function TemplatesPage() {
 
             {/* Message content */}
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">メッセージ内容 <span className="text-red-500">*</span></label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-medium text-gray-600">メッセージ内容 <span className="text-red-500">*</span></label>
+                {form.messageType === 'text' && (
+                  <button type="button" onClick={() => setShowTrackingPicker(true)} className="text-xs text-green-600 hover:text-green-700">リンク挿入</button>
+                )}
+              </div>
 
               {form.messageType === 'form' && (
                 <div className="mb-2">
@@ -532,6 +539,13 @@ export default function TemplatesPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {showTrackingPicker && (
+        <TrackingLinkPicker
+          onSelect={(url) => { setForm({ ...form, messageContent: form.messageContent + url }); setShowTrackingPicker(false) }}
+          onClose={() => setShowTrackingPicker(false)}
+        />
       )}
 
       {/* Templates list */}

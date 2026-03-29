@@ -20,8 +20,10 @@ function serializeTrackedLink(row: TrackedLink, baseUrl: string) {
   return {
     id: row.id,
     name: row.name,
+    url: row.original_url,
     originalUrl: row.original_url,
     trackingUrl,
+    shortCode: trackingUrl,
     tagId: row.tag_id,
     scenarioId: row.scenario_id,
     isActive: Boolean(row.is_active),
@@ -81,18 +83,20 @@ trackedLinks.post('/api/tracked-links', async (c) => {
   try {
     const body = await c.req.json<{
       name: string;
-      originalUrl: string;
+      originalUrl?: string;
+      url?: string;
       tagId?: string | null;
       scenarioId?: string | null;
     }>();
 
-    if (!body.name || !body.originalUrl) {
-      return c.json({ success: false, error: 'name and originalUrl are required' }, 400);
+    const originalUrl = body.originalUrl || body.url;
+    if (!body.name || !originalUrl) {
+      return c.json({ success: false, error: 'name and url are required' }, 400);
     }
 
     const link = await createTrackedLink(c.env.DB, {
       name: body.name,
-      originalUrl: body.originalUrl,
+      originalUrl,
       tagId: body.tagId ?? null,
       scenarioId: body.scenarioId ?? null,
     });

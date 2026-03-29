@@ -7,6 +7,7 @@ import Header from '@/components/layout/header'
 import CcPromptButton from '@/components/cc-prompt-button'
 import FlexPreviewComponent from '@/components/flex-preview'
 import MediaUrlInput from '@/components/media-url-input'
+import TrackingLinkPicker from '@/components/tracking-link-picker'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -254,6 +255,7 @@ function ChatComposer({ onSend, sending }: { onSend: (msgType: string, content: 
   const [selectedFormId, setSelectedFormId] = useState('')
   const [templatesList, setTemplatesList] = useState<TemplateData[]>([])
   const [showTemplateModal, setShowTemplateModal] = useState(false)
+  const [showTrackingPicker, setShowTrackingPicker] = useState(false)
   const [bookingServices, setBookingServices] = useState<{ id: string; name: string }[]>([])
   const [selectedBookingServiceId, setSelectedBookingServiceId] = useState('')
 
@@ -325,7 +327,12 @@ function ChatComposer({ onSend, sending }: { onSend: (msgType: string, content: 
 
       {/* Content area */}
       {msgType === 'text' && (
-        <textarea value={content} onChange={e => setContent(e.target.value)} rows={3} placeholder="メッセージを入力..." className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 resize-y focus:outline-none focus:ring-2 focus:ring-green-500" />
+        <div>
+          <div className="flex justify-end mb-1">
+            <button type="button" onClick={() => setShowTrackingPicker(true)} className="text-xs text-green-600 hover:text-green-700">リンク挿入</button>
+          </div>
+          <textarea value={content} onChange={e => setContent(e.target.value)} rows={3} placeholder="メッセージを入力..." className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 resize-y focus:outline-none focus:ring-2 focus:ring-green-500" />
+        </div>
       )}
 
       {msgType === 'image' && (() => {
@@ -387,6 +394,12 @@ function ChatComposer({ onSend, sending }: { onSend: (msgType: string, content: 
         <button onClick={handleSend} disabled={sending || !getDisplayContent().trim()} className="px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50" style={{ backgroundColor: '#06C755' }}>{sending ? '送信中...' : '送信'}</button>
       </div>
 
+      {showTrackingPicker && (
+        <TrackingLinkPicker
+          onSelect={(url) => { setContent(content + url); setShowTrackingPicker(false) }}
+          onClose={() => setShowTrackingPicker(false)}
+        />
+      )}
       {showTemplateModal && <TemplateModal templates={templatesList} onSelect={handleInsertTemplate} onClose={() => setShowTemplateModal(false)} />}
     </div>
   )
