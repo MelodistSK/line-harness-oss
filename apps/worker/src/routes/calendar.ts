@@ -422,9 +422,17 @@ calendar.post('/api/calendar/book', async (c) => {
     }
 
     // Save to D1
-    // Use 'settings' as connection_id for settings-based bookings
+    // Ensure a placeholder connection record exists for settings-based bookings
+    const SETTINGS_CONN_ID = 'settings-default';
+    try {
+      await c.env.DB.prepare(
+        `INSERT OR IGNORE INTO google_calendar_connections (id, calendar_id, auth_type, is_active, created_at, updated_at)
+         VALUES (?, ?, 'service_account', 1, datetime('now'), datetime('now'))`
+      ).bind(SETTINGS_CONN_ID, settings.google_calendar_id || 'default').run();
+    } catch { /* already exists */ }
+
     const booking = await createCalendarBooking(c.env.DB, {
-      connectionId: 'settings',
+      connectionId: SETTINGS_CONN_ID,
       friendId: body.friendId,
       eventId: eventId ?? undefined,
       title,
@@ -464,8 +472,10 @@ calendar.post('/api/calendar/book', async (c) => {
       },
     }, 201);
   } catch (err) {
-    console.error('POST /api/calendar/book error:', err);
-    return c.json({ success: false, error: 'Internal server error' }, 500);
+    const msg = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : '';
+    console.error('POST /api/calendar/book error:', msg, stack);
+    return c.json({ success: false, error: msg }, 500);
   }
 });
 
