@@ -70,6 +70,7 @@ export default function WebhooksPage() {
     { value: 'scenario_started',    label: 'シナリオ開始',   emoji: '▶️' },
     { value: 'scenario_completed',  label: 'シナリオ完了',   emoji: '✅' },
     { value: 'broadcast_sent',      label: '配信送信',       emoji: '📤' },
+    { value: 'booking_created',     label: 'カレンダー予約', emoji: '📅' },
   ]
 
   const load = useCallback(async () => {
