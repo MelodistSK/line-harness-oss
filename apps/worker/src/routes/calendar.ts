@@ -457,6 +457,24 @@ calendar.post('/api/calendar/book', async (c) => {
       }
     }
 
+    // Fire booking_created event (best effort)
+    try {
+      const { fireEvent } = await import('../services/event-bus.js');
+      await fireEvent(c.env.DB, 'booking_created', {
+        friendId: body.friendId,
+        eventData: {
+          bookingId: booking.id,
+          title,
+          date: body.date,
+          startTime: body.startTime,
+          endTime: body.endTime,
+          bookingData: body.bookingData,
+        },
+      });
+    } catch (err) {
+      console.warn('booking_created fireEvent failed:', err);
+    }
+
     return c.json({
       success: true,
       data: {
