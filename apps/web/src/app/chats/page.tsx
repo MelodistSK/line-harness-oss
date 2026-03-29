@@ -167,7 +167,7 @@ function DirectMessagePanel({ friendId, friend, onBack }: {
       await fetchApi(`/api/friends/${friendId}/messages`, { method: 'POST', body: JSON.stringify({ content: message, messageType: 'text' }) })
       setMessages(prev => [...prev, { id: crypto.randomUUID(), direction: 'outgoing', messageType: 'text', content: message, createdAt: new Date().toISOString() }])
       setMessage('')
-    } catch {}
+    } catch (err) { alert(`送信エラー: ${err instanceof Error ? err.message : String(err)}`) }
     setSending(false)
   }
 
@@ -446,7 +446,7 @@ export default function ChatsPage() {
       await api.chats.send(selectedChatId, { content, messageType: msgType })
       loadChatDetail(selectedChatId)
       loadChats()
-    } catch { setError('メッセージの送信に失敗しました。') }
+    } catch (err) { setError(`メッセージの送信に失敗しました: ${err instanceof Error ? err.message : String(err)}`) }
     finally { setSending(false) }
   }
 
