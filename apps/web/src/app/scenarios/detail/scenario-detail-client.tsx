@@ -136,7 +136,7 @@ function generateFormFlex(form: FormData): string {
 }
 
 function generateBookingFlex(): string {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://line-harness-mamayoro.s-kamiya.workers.dev'
+  const apiUrl = (process.env.NEXT_PUBLIC_API_URL || 'https://line-harness-mamayoro.s-kamiya.workers.dev').trim()
   const liffUrl = `${apiUrl}/liff/booking`
   return JSON.stringify({
     type: 'bubble',
