@@ -167,11 +167,6 @@ function showCompletion(profile: { displayName: string; pictureUrl?: string }, i
       ${ref ? `<p class="ref-badge">${escapeHtml(ref)}</p>` : ''}
     </div>
   `;
-
-  // 2秒後にLIFFを閉じる
-  setTimeout(() => {
-    try { liff.closeWindow(); } catch { /* ブラウザでは閉じられない */ }
-  }, 2000);
 }
 
 function showError(message: string) {
