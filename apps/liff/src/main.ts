@@ -168,10 +168,9 @@ function showCompletion(profile: { displayName: string; pictureUrl?: string }, i
     </div>
   `;
 
-  // 2秒後にトーク画面に遷移
+  // 2秒後にLIFFを閉じる
   setTimeout(() => {
-    // LINE内でもブラウザでも、トーク画面URLに遷移
-    window.location.href = BOT_BASIC_ID ? `https://line.me/R/oaMessage/${BOT_BASIC_ID}/` : 'https://line.me/R/nv/chat';
+    try { liff.closeWindow(); } catch { /* ブラウザでは閉じられない */ }
   }, 2000);
 }
 
