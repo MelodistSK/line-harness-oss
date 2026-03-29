@@ -75,8 +75,8 @@ function fmtTime(iso){try{const d=new Date(iso);return pad(d.getHours())+":"+pad
 function isToday(y,m,d){const n=new Date();return n.getFullYear()===y&&n.getMonth()===m&&n.getDate()===d}
 function isPast(y,m,d){const n=new Date();n.setHours(0,0,0,0);return new Date(y,m,d)<n}
 
-function closedDays(){return settings?JSON.parse(settings.closedDays||"[]"):[]}
-function closedDates(){return settings?JSON.parse(settings.closedDates||"[]"):[]}
+function closedDays(){if(!settings)return[];try{return Array.isArray(settings.closedDays)?settings.closedDays:JSON.parse(settings.closedDays||"[]")}catch{return[]}}
+function closedDates(){if(!settings)return[];try{return Array.isArray(settings.closedDates)?settings.closedDates:JSON.parse(settings.closedDates||"[]")}catch{return[]}}
 function isClosed(y,m,d){
   const dow=["sun","mon","tue","wed","thu","fri","sat"][new Date(y,m,d).getDay()];
   if(closedDays().includes(dow))return true;

@@ -437,16 +437,15 @@ export function buildMessage(messageType: string, messageContent: string): Messa
     try {
       const parsed = JSON.parse(messageContent) as Record<string, unknown>;
       const { _quickReply, ...contents } = parsed;
-      // Remove empty text nodes (from {{#if_ref}} conditional blocks)
       cleanEmptyNodes(contents);
-      // Extract first text element for altText (shown in notifications)
       const altText = extractFlexAltText(contents) || 'お知らせ';
       const msg: Record<string, unknown> = { type: 'flex', altText, contents };
       if (Array.isArray(_quickReply) && _quickReply.length > 0) {
         msg.quickReply = buildQuickReplyObject(_quickReply as QuickReplyItemDef[]);
       }
       return msg as unknown as Message;
-    } catch {
+    } catch (err) {
+      console.error('[buildMessage] flex parse error:', err, 'content:', messageContent.slice(0, 200));
       return { type: 'text', text: messageContent };
     }
   }
