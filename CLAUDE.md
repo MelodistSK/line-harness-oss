@@ -24,7 +24,8 @@
 ### バックエンド / API
 - **Cloudflare Workers** (Hono フレームワーク)
 - **Cloudflare D1** (SQLite3 互換 DB)
-- **Cloudflare KV** (画像アセット保存)
+- **Cloudflare R2** (メディアストレージ、100MB/ファイル上限)
+- **Cloudflare KV** (LIFFアプリ配信 + R2移行前のレガシーアセット)
 - **TypeScript**
 
 ### LIFF / モバイルUI
@@ -46,13 +47,15 @@ line-harness-oss/
 ├── apps/
 │   ├── worker/              # Cloudflare Workers バックエンド
 │   │   ├── src/
-│   │   │   ├── index.ts     # メインエントリ、CORS・Auth設定、/liff・/r/:ref ルート
+│   │   │   ├── index.ts     # メインエントリ、CORS・Auth、/liff・/liff/booking・/r/:ref
+│   │   │   ├── liff-pages.ts # LIFF予約・フォーム専用HTML生成（インラインJS）
 │   │   │   ├── routes/      # API各ルート（26ファイル）
 │   │   │   ├── middleware/  # 認証ミドルウェア (auth.ts)
 │   │   │   └── services/    # ビジネスロジック
-│   │   │       ├── broadcast.ts       # 一斉配信処理
+│   │   │       ├── broadcast.ts       # 一斉配信（テンプレート変数展開対応）
+│   │   │       ├── google-calendar.ts # GCal API（サービスアカウントJWT認証）
 │   │   │       ├── event-bus.ts       # イベント発火・Webhook/Scoring/Automation
-│   │   │       ├── step-delivery.ts   # ステップ配信処理
+│   │   │       ├── step-delivery.ts   # ステップ配信・buildMessage
 │   │   │       ├── reminder-delivery.ts
 │   │   │       ├── stealth.ts         # 人間らしい送信パターン
 │   │   │       └── auto-track.ts      # URLトラッキング自動変換
@@ -70,9 +73,9 @@ line-harness-oss/
 │   │
 │   └── liff/                # LIFF フロントエンド（Vite + TypeScript）
 │       ├── src/
-│       │   ├── main.ts      # 友だち追加フロー
+│       │   ├── main.ts      # エントリ（友だち追加は?page=なし時のみ）
 │       │   ├── form.ts      # フォーム表示・送信
-│       │   └── booking.ts   # 予約カレンダー
+│       │   └── booking.ts   # 予約（レガシー、/liff/bookingに移行済み）
 │       ├── .env             # VITE_API_URL, VITE_LIFF_ID (gitignore対象)
 │       ├── vite.config.ts
 │       └── package.json
@@ -80,8 +83,8 @@ line-harness-oss/
 ├── packages/
 │   ├── db/                  # D1 スキーマ & マイグレーション
 │   │   ├── schema.sql
-│   │   ├── schema-full.sql  # 本番導入用：全テーブル統合版
-│   │   ├── migrations/      # 段階的マイグレーション (001〜009)
+│   │   ├── schema-full.sql  # 本番導入用：全43テーブル統合版
+│   │   ├── migrations/      # 段階的マイグレーション (001〜014)
 │   │   └── src/
 │   │       └── *.ts         # DB操作関数
 │   │
@@ -152,23 +155,24 @@ npx vercel deploy --prod
 ### LIFFアプリ更新（KVに再アップロード）
 
 ```bash
-# LIFFをリビルド
-cd apps/liff && npx vite build
+# LIFFをリビルド（環境変数をビルド時に埋め込み）
+cd apps/liff
+VITE_LIFF_ID=2009615537-8qwrEnEt \
+VITE_API_URL=https://line-harness-mamayoro.s-kamiya.workers.dev \
+pnpm build
 
-# JSをKVにアップロード（MIMEタイプ付き）
+# KVの古いキーを削除してから再アップロード
 cd ../worker
-npx wrangler kv key put --namespace-id 86808b1b6a0a4d45be74d2e1df497f88 \
-  "liff.js" --path "../liff/dist/assets/liff.js" \
-  --metadata '{"contentType":"application/javascript"}'
-
-# HTMLをKVにアップロード
-npx wrangler kv key put --namespace-id 86808b1b6a0a4d45be74d2e1df497f88 \
-  "liff-index.html" --path "../liff/dist/index.html" \
-  --metadata '{"contentType":"text/html"}'
+npx wrangler kv:key delete --namespace-id=86808b1b6a0a4d45be74d2e1df497f88 "liff-index.html"
+npx wrangler kv:key delete --namespace-id=86808b1b6a0a4d45be74d2e1df497f88 "liff.js"
+npx wrangler kv:key put --namespace-id=86808b1b6a0a4d45be74d2e1df497f88 "liff-index.html" --path ../liff/dist/index.html
+npx wrangler kv:key put --namespace-id=86808b1b6a0a4d45be74d2e1df497f88 "liff.js" --path ../liff/dist/assets/liff.js
 
 # Workerを再デプロイ
-npx wrangler deploy
+pnpm run deploy
 ```
+
+> **注意**: `/liff/booking` (予約ページ) と `/liff/form` (フォームページ) は `liff-pages.ts` でインラインHTML生成されるため、KVアップロード不要。Worker再デプロイのみで反映される。
 
 ---
 
@@ -186,7 +190,8 @@ npx wrangler deploy
 - **本番URL**: `https://line-harness-mamayoro.s-kamiya.workers.dev`
 - **アカウントID**: `f00cff121653deb09e6d20bbfca5349a`
 - **D1 DB**: `line-crm` (ID: `df15a84f-3aa0-4257-823a-524d308cf98a`)
-- **KV**: ASSETS (ID: `86808b1b6a0a4d45be74d2e1df497f88`)
+- **R2**: `line-harness-assets`（バインディング: `ASSETS`、メディアストレージ）
+- **KV**: `ASSETS_KV` (ID: `86808b1b6a0a4d45be74d2e1df497f88`、LIFF配信 + レガシーアセット)
 - **Cron**: `*/5 * * * *`（5分ごとにステップ配信・予約配信・リマインダ実行）
 
 ### LIFF
@@ -194,7 +199,8 @@ npx wrangler deploy
 - **エンドポイントURL**: `https://line-harness-mamayoro.s-kamiya.workers.dev/liff`
 - **配信方式**: WorkerのKVストアから配信（`/liff` ルートで `liff-index.html` を返却、`/assets/liff.js` でJSを配信）
 - **フォームURL形式**: `https://liff.line.me/2009615537-8qwrEnEt?page=form&id={FORM_ID}`
-- **予約URL形式**: `https://liff.line.me/2009615537-8qwrEnEt?page=book`
+- **予約URL形式**: `https://line-harness-mamayoro.s-kamiya.workers.dev/liff/booking`（Worker直接配信、友だち追加フロー不要）
+- **注意**: 予約ページは `/liff/booking` で独立配信（`liff-pages.ts` でインラインHTML生成）。`liff.line.me/{LIFF_ID}?page=booking` 経由の場合、LIFF SDKの `liff.state` パラメータ変換でルーティングが不安定になるため、Worker URLを直接使用する。
 
 ---
 
@@ -215,7 +221,8 @@ npx wrangler deploy
 | `WORKER_URL` | Var | Workerの公開URL（`https://line-harness-mamayoro.s-kamiya.workers.dev`） |
 | `X_HARNESS_URL` | Secret | X Harness API URL（省略可） |
 | `DB` | Binding | D1 データベース |
-| `ASSETS` | Binding | KV 画像ストア（LIFF配信も兼用） |
+| `ASSETS` | Binding | R2 メディアストレージ（画像・動画） |
+| `ASSETS_KV` | Binding | KV（LIFF配信 + レガシーアセット、R2フォールバック） |
 
 ```bash
 # シークレット設定方法
@@ -273,13 +280,14 @@ WORKER_URL=http://localhost:8787
   - 即時送信・予約配信
   - ステルス送信（バッチ遅延・メッセージバリエーション）
   - URLトラッキング自動変換
+  - テンプレート変数展開: `{{name}}`/`{{score}}`/`{{uid}}`（変数含む場合はpushMessage個別送信）
 
 - **オートリプライ**: キーワードマッチによる自動返信
 
 - **リマインダ配信**: 特定日時基準のステップ配信
 
 ### メッセージ作成強化
-- **対応メッセージ種別**: `text` / `image` / `flex` / `carousel` / `video` / `rich_menu`
+- **対応メッセージ種別**: `text` / `image` / `flex` / `carousel` / `video` / `rich_menu` / `form` / `booking`
 - **クイックリプライ**: 全メッセージタイプに追加可能
 - **Flexプレビュー**: JSON入力でリアルタイムプレビュー表示（`flex-preview.tsx`）
 - **テンプレート挿入**: 保存済みテンプレートからワンクリック挿入
@@ -295,12 +303,16 @@ WORKER_URL=http://localhost:8787
 - **Kintone連携**: サブドメイン・AppID・APIトークン・フィールドマッピング設定
 - 回答一覧・CSV エクスポート
 
-### 画像ホスティング（KV）
-- **Workers KV** に保存（最大10MB/ファイル）
-- アップロードAPI: `POST /api/assets/upload`（multipart/form-data または `image/*`）
-- 公開配信: `GET /assets/:filename`（認証不要・永続キャッシュ）
-- 対応形式: PNG / JPEG / GIF / WebP / SVG
-- **LIFFアプリ**もKV配信（`liff-index.html` / `liff.js`）
+### メディアストレージ（R2 + KVフォールバック）
+- **Cloudflare R2** に保存（最大100MB/ファイル）
+- アップロードAPI: `POST /api/assets/upload`（multipart/form-data または `image/*`/`video/*`）
+- 公開配信: `GET /assets/:filename`（認証不要・永続キャッシュ・Range request対応・CORS対応）
+- 対応形式: PNG / JPEG / GIF / WebP / SVG / MP4 / M4V / JS / CSS / HTML
+- 拡張子ベースMIME自動判定（メタデータ欠損時のフォールバック）
+- **KVフォールバック**: R2にない場合はKVから配信（移行期間中の後方互換）
+- **移行API**: `POST /api/assets/migrate-to-r2`（KV→R2一括コピー）
+- **LIFFアプリ**はKV配信（`liff-index.html` / `liff.js`）
+- **動画配信要件**: Content-Type: video/mp4, Accept-Ranges: bytes, 206 Partial Content対応（LINE API必須）
 
 ### リッチメニュービルダー
 - リッチメニュー作成・削除・デフォルト設定
@@ -345,8 +357,9 @@ WORKER_URL=http://localhost:8787
 - 認証スキップパス一覧（`apps/worker/src/middleware/auth.ts`）:
   - `/webhook`, `/docs`, `/openapi.json`
   - `/api/affiliates/click`, `/api/liff/*`, `/auth/*`
-  - `/liff`（LIFFアプリ配信）
+  - `/liff`, `/liff/*`（LIFFアプリ配信・予約・フォーム）
   - `/assets/*`, `/t/*`, `/r/*`（公開リソース）
+  - `/api/calendar/available`, `/api/calendar/settings-public`, `/api/calendar/book*`
   - `/api/forms/:id`（フォーム定義取得）
   - `/api/forms/:id/submit`（フォーム送信）
   - `/api/rich-menus/:id/image`（独自トークン認証）
@@ -364,7 +377,14 @@ WORKER_URL=http://localhost:8787
 - 全ページ日本語UI
 
 ### その他
-- **Google Calendar連携**: 空き枠確認・予約受付・LIFFカレンダーUI
+- **Google Calendar予約システム**:
+  - サービスアカウントJWT認証（Web Crypto API、外部ライブラリ不要）
+  - 認証情報はDB（`calendar_settings`テーブル）に保存（環境変数不要）
+  - 管理画面: 接続設定・営業時間・休日・予約フォーム項目・予約一覧・空き状況プレビュー
+  - LIFF予約ページ: `/liff/booking`（インラインHTML、友だち追加フロー不要）
+  - 空きスロット計算: 営業時間 + 休日 + GCal FreeBusy + D1予約の4重照合
+  - 二重予約防止: 予約作成時にGCal + D1の両方で再確認
+  - メッセージ種別「予約」: Flex自動生成、全送信画面で利用可能
 - **アフィリエイト追跡**: クリックID・コミッション率・成果レポート
 - **広告プラットフォーム連携**: Facebook/Google Ads コンバージョンAPI
 - **アカウントヘルスモニタリング**: BAN検知（normal/warning/danger）
@@ -394,7 +414,7 @@ conversion_points, conversion_events
 affiliates, affiliate_clicks
 
 # Google Calendar
-google_calendar_connections, calendar_bookings
+google_calendar_connections, calendar_bookings, calendar_settings
 
 # 決済
 stripe_events
@@ -480,9 +500,27 @@ TypeError: Failed to execute 'set' on 'Headers': Invalid value
 - `auth.ts` で `path === '/liff'` をホワイトリスト済み
 - 正しいLIFFエンドポイントURL: `https://line-harness-mamayoro.s-kamiya.workers.dev/liff`
 
-### Flex配信でURIに改行が含まれる
-- `NEXT_PUBLIC_LIFF_ID` の末尾改行が原因
-- `broadcast-form.tsx`, `templates/page.tsx`, `scenario-detail-client.tsx` の `LIFF_ID` 取得時に `.trim()` 済み
+### Flex配信でURIに改行が含まれる（LINE API 400: invalid uri）
+- `NEXT_PUBLIC_API_URL` や `NEXT_PUBLIC_LIFF_ID` の末尾改行が原因
+- Vercel環境変数は `printf` で設定すること（`echo` は改行付加）
+- 全ての `process.env.NEXT_PUBLIC_*` 参照に `.trim()` 済み（api.ts, 各generateBookingFlex等）
+
+### LIFF予約ページで友だち追加フローが走る
+- `liff.line.me/{LIFF_ID}?page=booking` 経由の場合、LIFF SDKが `liff.state` にパラメータを変換するためルーティング失敗
+- 解決: 予約ページは `/liff/booking` (Worker直接配信) を使用。FlexメッセージのURLも `{WORKER_URL}/liff/booking`
+
+### LIFF予約ページで「JSON Parse error: Unexpected identifier "sun"」
+- `settings-public` APIが返す `closedDays` は既にJavaScript配列なのに `JSON.parse()` で再パースしていた
+- `liff-pages.ts` で `Array.isArray()` チェック後にそのまま使用するよう修正済み
+
+### 動画がLINEで再生できない
+- Range request非対応（200で全データ返却）→ 206 Partial Content対応済み
+- auto-track.tsで動画URLがトラッキングURLに置換されていた → videoタイプをスキップ対象に追加
+- previewImageUrlが空の場合に動画URLをフォールバックに使用していた → プレースホルダー画像に変更
+
+### チャット送信で500エラー（メッセージは届いている）
+- LINE pushMessage成功後の後処理（messages_log INSERT, updateChat）でエラー発生時に500を返していた
+- LINE送信後の後処理を個別try-catchでラップし、失敗しても200を返すよう修正済み
 
 ### CORS エラー
 ```
@@ -517,18 +555,23 @@ pnpm -r run build
 8. リマインダ配信
 9. スコアリング機能
 10. メタデータ拡張
-11. 画像ホスティング（Cloudflare KV）
+11. メディアストレージ（Cloudflare R2、KVフォールバック、Range request対応）
 12. リッチメニュービルダー＋セグメント切替＋自動切替
 13. フォームビルダー（9種フィールド＋Kintone連携）
 14. Flexメッセージプレビュー
 15. ダークテーマUI（ネイビーサイドバー）
-16. メッセージ送信強化（カルーセル・クイックリプライ・動画・テンプレート挿入・変数プレビュー・テスト送信・フォーム送信・リッチメニュー切替アクション）
-17. LIFFアプリ（友だち追加・フォーム・予約）、Worker KV配信
+16. メッセージ送信強化（カルーセル・クイックリプライ・動画・テンプレート挿入・変数プレビュー・テスト送信・フォーム送信・予約送信・リッチメニュー切替アクション）
+17. LIFFアプリ（友だち追加・フォーム・予約）、Worker KV/R2配信
 18. URLトラッキング自動変換（Auto-track）
 19. アフィリエイト追跡
 20. アカウントヘルスモニタリング
 21. 広告プラットフォーム連携（Facebook/Google Ads）
 22. 環境変数の改行バグ防止（.trim() 徹底）
+23. 全管理ページに編集・複製・削除確認機能
+24. Google Calendar予約システム（サービスアカウントJWT認証、管理画面設定、LIFF予約）
+25. テンプレート変数展開（一斉配信: {{name}}/{{score}}/{{uid}}）
+26. 動画メッセージ完全対応（R2配信、Range request、CORS、プレビュー）
+27. チャット画面の自動スクロール（最新メッセージへ）
 
 ### 今後の拡張想定
 - **Stripe 決済連携** (基盤実装済み)
@@ -553,4 +596,4 @@ pnpm -r run build
 
 ---
 
-**最終更新**: 2026年3月28日
+**最終更新**: 2026年3月29日
