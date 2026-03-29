@@ -245,15 +245,22 @@ chats.post('/api/chats/:id/send', async (c) => {
     const message = buildMessage(messageType, body.content);
     await lineClient.pushMessage(friend.line_user_id, [message]);
 
-    // メッセージログに記録
+    // LINE送信成功 — 後処理はベストエフォート（失敗しても200を返す）
     const logId = crypto.randomUUID();
-    await c.env.DB
-      .prepare(`INSERT INTO messages_log (id, friend_id, direction, message_type, content, created_at) VALUES (?, ?, 'outgoing', ?, ?, ?)`)
-      .bind(logId, friend.id, messageType, body.content, jstNow())
-      .run();
+    try {
+      await c.env.DB
+        .prepare(`INSERT INTO messages_log (id, friend_id, direction, message_type, content, created_at) VALUES (?, ?, 'outgoing', ?, ?, ?)`)
+        .bind(logId, friend.id, messageType, body.content, jstNow())
+        .run();
+    } catch (logErr) {
+      console.error('messages_log insert failed (message was sent):', logErr);
+    }
 
-    // チャットの最終メッセージ日時を更新
-    await updateChat(c.env.DB, chatId, { status: 'in_progress', lastMessageAt: jstNow() });
+    try {
+      await updateChat(c.env.DB, chatId, { status: 'in_progress', lastMessageAt: jstNow() });
+    } catch (updateErr) {
+      console.error('chat status update failed (message was sent):', updateErr);
+    }
 
     return c.json({ success: true, data: { sent: true, messageId: logId } });
   } catch (err) {
