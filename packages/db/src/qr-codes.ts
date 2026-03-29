@@ -131,3 +131,46 @@ export async function getAnalyticsSummary(db: D1Database): Promise<AnalyticsSumm
     sourcesCount: srcRow?.c ?? 0,
   };
 }
+
+// --- Ref Scans (QR scan → friend-add matching) ---
+
+export async function recordRefScan(
+  db: D1Database,
+  refCode: string,
+  ipAddress: string | null,
+  userAgent: string | null,
+): Promise<void> {
+  const id = crypto.randomUUID();
+  const now = jstNow();
+  await db
+    .prepare('INSERT INTO ref_scans (id, ref_code, ip_address, user_agent, created_at) VALUES (?, ?, ?, ?, ?)')
+    .bind(id, refCode, ipAddress, userAgent, now)
+    .run();
+}
+
+/** Find the most recent unmatched ref scan from the same IP (within 30 minutes) */
+export async function matchRefScan(
+  db: D1Database,
+  ipAddress: string | null,
+  friendId: string,
+): Promise<string | null> {
+  if (!ipAddress) return null;
+  // Find most recent unmatched scan from this IP within 30 min
+  const cutoff = new Date(Date.now() - 30 * 60 * 1000);
+  const cutoffStr = cutoff.toISOString().replace('Z', '+09:00');
+  const row = await db
+    .prepare(
+      `SELECT id, ref_code FROM ref_scans
+       WHERE ip_address = ? AND friend_id IS NULL AND created_at > ?
+       ORDER BY created_at DESC LIMIT 1`
+    )
+    .bind(ipAddress, cutoffStr)
+    .first<{ id: string; ref_code: string }>();
+  if (!row) return null;
+  // Mark as matched
+  await db
+    .prepare('UPDATE ref_scans SET friend_id = ? WHERE id = ?')
+    .bind(friendId, row.id)
+    .run();
+  return row.ref_code;
+}

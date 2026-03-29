@@ -20,7 +20,7 @@ const analytics = new Hono<Env>();
 analytics.get('/api/qr-codes', async (c) => {
   try {
     const items = await getQrCodes(c.env.DB);
-    const liffUrl = (c.env.LIFF_URL || 'https://liff.line.me/2009615537-8qwrEnEt').trim();
+    const baseUrl = c.env.WORKER_URL || new URL(c.req.url).origin;
     return c.json({
       success: true,
       data: items.map((q) => ({
@@ -30,7 +30,7 @@ analytics.get('/api/qr-codes', async (c) => {
         scanCount: q.scan_count,
         friendCount: q.friend_count,
         isActive: !!q.is_active,
-        liffUrl: `${liffUrl}?ref=${encodeURIComponent(q.ref_code)}`,
+        liffUrl: `${baseUrl}/r/${encodeURIComponent(q.ref_code)}`,
         createdAt: q.created_at,
       })),
     });
@@ -53,14 +53,14 @@ analytics.post('/api/qr-codes', async (c) => {
     if (existing) return c.json({ success: false, error: 'This ref code already exists' }, 409);
 
     const qr = await createQrCode(c.env.DB, { name: body.name, refCode });
-    const liffUrl = (c.env.LIFF_URL || 'https://liff.line.me/2009615537-8qwrEnEt').trim();
+    const baseUrl = c.env.WORKER_URL || new URL(c.req.url).origin;
     return c.json({
       success: true,
       data: {
         id: qr.id,
         name: qr.name,
         refCode: qr.ref_code,
-        liffUrl: `${liffUrl}?ref=${encodeURIComponent(qr.ref_code)}`,
+        liffUrl: `${baseUrl}/r/${encodeURIComponent(qr.ref_code)}`,
       },
     }, 201);
   } catch (err) {

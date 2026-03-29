@@ -174,10 +174,32 @@ async function handleEvent(
       }
     }
 
+    // Match pending QR ref scan (IP-based) and save ref_code on friend
+    let matchedRef: string | null = null;
+    try {
+      const { matchRefScan, incrementQrCodeFriend } = await import('@line-crm/db');
+      // Try to get the IP from the most recent context — not available in webhook,
+      // so we match any recent unmatched scan and claim it for this friend
+      // For follow events, use a broader match: find most recent unmatched scan globally (within 5 min)
+      const scanRow = await db
+        .prepare(`SELECT id, ref_code FROM ref_scans WHERE friend_id IS NULL AND created_at > datetime('now', '-5 minutes', '+9 hours') ORDER BY created_at DESC LIMIT 1`)
+        .first<{ id: string; ref_code: string }>();
+      if (scanRow) {
+        matchedRef = scanRow.ref_code;
+        await db.prepare('UPDATE ref_scans SET friend_id = ? WHERE id = ?').bind(friend.id, scanRow.id).run();
+        // Save ref_code on friend (first touch wins)
+        await db.prepare('UPDATE friends SET ref_code = ? WHERE id = ? AND ref_code IS NULL').bind(matchedRef, friend.id).run();
+        // Increment QR code friend count
+        await incrementQrCodeFriend(db, matchedRef);
+      }
+    } catch (err) {
+      console.error('QR ref scan matching error:', err);
+    }
+
     // イベントバス発火: friend_add (include ref_code if available)
     const freshFriend = await getFriendByLineUserId(db, userId);
     const refCode = (freshFriend as unknown as Record<string, unknown>)?.ref_code as string | null;
-    await fireEvent(db, 'friend_add', { friendId: friend.id, eventData: { displayName: friend.display_name, refCode: refCode || null } }, lineAccessToken, lineAccountId);
+    await fireEvent(db, 'friend_add', { friendId: friend.id, eventData: { displayName: friend.display_name, refCode: refCode || matchedRef || null } }, lineAccessToken, lineAccountId);
     return;
   }
 

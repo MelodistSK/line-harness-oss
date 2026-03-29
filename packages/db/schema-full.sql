@@ -331,6 +331,21 @@ CREATE TABLE IF NOT EXISTS qr_codes (
 CREATE INDEX IF NOT EXISTS idx_qr_codes_ref ON qr_codes (ref_code);
 
 -- ============================================================
+-- Ref Scans (QR scan → friend-add matching via IP)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS ref_scans (
+  id TEXT PRIMARY KEY,
+  ref_code TEXT NOT NULL,
+  ip_address TEXT,
+  user_agent TEXT,
+  friend_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now', '+9 hours'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ref_scans_ref ON ref_scans (ref_code);
+CREATE INDEX IF NOT EXISTS idx_ref_scans_ip ON ref_scans (ip_address, created_at);
+
+-- ============================================================
 -- Forms
 -- ============================================================
 CREATE TABLE IF NOT EXISTS forms (

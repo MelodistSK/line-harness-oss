@@ -106,38 +106,27 @@ app.route('/', assets);
 app.route('/', richMenuMappings);
 app.route('/', adPlatforms);
 
-// Short link: /r/:ref → landing page with LINE open button
-app.get('/r/:ref', (c) => {
+// Short link: /r/:ref → record scan + redirect to LINE friend-add URL
+app.get('/r/:ref', async (c) => {
   const ref = c.req.param('ref');
-  const liffUrl = c.env.LIFF_URL || 'https://liff.line.me/2009615537-8qwrEnEt';
-  const target = `${liffUrl}?ref=${encodeURIComponent(ref)}`;
+  const ip = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For')?.split(',')[0]?.trim() || null;
+  const ua = c.req.header('User-Agent') || null;
 
-  return c.html(`<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>LINE Harness</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Hiragino Sans',system-ui,sans-serif;background:#0d1117;color:#fff;display:flex;justify-content:center;align-items:center;min-height:100vh}
-.card{text-align:center;max-width:400px;width:90%;padding:48px 24px}
-h1{font-size:28px;font-weight:800;margin-bottom:8px}
-.sub{font-size:14px;color:rgba(255,255,255,0.5);margin-bottom:40px}
-.btn{display:block;width:100%;padding:18px;border:none;border-radius:12px;font-size:18px;font-weight:700;text-decoration:none;text-align:center;color:#fff;background:#06C755;transition:opacity .15s}
-.btn:active{opacity:.85}
-.note{font-size:12px;color:rgba(255,255,255,0.3);margin-top:24px;line-height:1.6}
-</style>
-</head>
-<body>
-<div class="card">
-<h1>LINE Harness</h1>
-<p class="sub">L社 / U社 の無料代替 OSS</p>
-<a href="${target}" class="btn">LINE で体験する</a>
-<p class="note">友だち追加するだけで<br>ステップ配信・フォーム・自動返信を体験できます</p>
-</div>
-</body>
-</html>`);
+  // Record the scan asynchronously (don't block redirect)
+  const ctx = c.executionCtx as ExecutionContext;
+  ctx.waitUntil((async () => {
+    try {
+      const { recordRefScan, incrementQrCodeScan } = await import('@line-crm/db');
+      await recordRefScan(c.env.DB, ref, ip, ua);
+      await incrementQrCodeScan(c.env.DB, ref);
+    } catch (err) {
+      console.error('/r/:ref scan recording error:', err);
+    }
+  })());
+
+  // Redirect directly to LINE friend-add URL
+  const botBasicId = '@374uwtva';
+  return c.redirect(`https://line.me/R/ti/p/${botBasicId}`, 302);
 });
 
 // LIFF app — serve from KV
