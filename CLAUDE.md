@@ -389,6 +389,18 @@ WORKER_URL=http://localhost:8787
   - 二重予約防止: 予約作成時にGCal + D1の両方で再確認
   - メッセージ種別「予約」: Flex自動生成、サービス指定可能、全送信画面で利用可能
   - Webhook OUT: `booking_created` イベントに `serviceId` / `serviceName` / `calendarId` を含む
+- **QRコード別流入計測**:
+  - QRコード作成・管理（`qr_codes`テーブル）: 名前、refコード自動生成、LIFF友だち追加URLのQR画像生成
+  - スキャン数・友だち追加数カウント（LIFF link時に自動インクリメント）
+  - QRコード別日別推移統計
+  - QRコード画像ダウンロード（PNG）
+- **流入分析ダッシュボード** (`/analytics`):
+  - サマリーカード（総友だち数・今月追加・流入経路数・トップ経路）
+  - 経路別友だち追加数 棒グラフ（CSS）
+  - 日別推移 折れ線グラフ（SVG）
+  - QRコード別コンバージョン率（スキャン → 友だち追加）
+  - 期間フィルタ（7日/30日/90日/全期間）
+  - 経路一覧テーブル
 - **アフィリエイト追跡**: クリックID・コミッション率・成果レポート
 - **広告プラットフォーム連携**: Facebook/Google Ads コンバージョンAPI
 - **アカウントヘルスモニタリング**: BAN検知（normal/warning/danger）
@@ -433,7 +445,7 @@ reminders, reminder_steps, friend_reminders, friend_reminder_deliveries
 scoring_rules, friend_scores
 
 # 広告・トラッキング
-ad_platforms, ad_conversion_logs, tracked_links
+ad_platforms, ad_conversion_logs, tracked_links, qr_codes
 
 # オペレーション
 chats, notification_rules, notifications

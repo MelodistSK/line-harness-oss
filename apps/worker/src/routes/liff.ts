@@ -314,10 +314,19 @@ liffRoutes.get('/auth/callback', async (c) => {
     // xh: refs are X Harness one-time tokens (the token IS the secret) — never persist as ref_code
     if (ref && !ref.startsWith('xh:')) {
       // Save ref_code on the friend record (first touch wins — only set if not already set)
-      await db
+      const refResult = await db
         .prepare(`UPDATE friends SET ref_code = ? WHERE id = ? AND ref_code IS NULL`)
         .bind(ref, friend.id)
         .run();
+
+      // Increment QR code counters (scan always, friend only on first touch)
+      try {
+        const { incrementQrCodeScan, incrementQrCodeFriend } = await import('@line-crm/db');
+        await incrementQrCodeScan(db, ref);
+        if (refResult.meta?.changes && refResult.meta.changes > 0) {
+          await incrementQrCodeFriend(db, ref);
+        }
+      } catch { /* qr_codes table may not exist yet */ }
 
       // Look up entry route config
       const route = await getEntryRouteByRefCode(db, ref);
@@ -560,8 +569,15 @@ liffRoutes.post('/api/liff/link', async (c) => {
     if ((friend as unknown as Record<string, unknown>).user_id) {
       // Still save ref even if already linked (but never persist xh: tokens as ref_code)
       if (body.ref && !body.ref.startsWith('xh:')) {
-        await db.prepare('UPDATE friends SET ref_code = ? WHERE id = ? AND ref_code IS NULL')
+        const linkRefResult = await db.prepare('UPDATE friends SET ref_code = ? WHERE id = ? AND ref_code IS NULL')
           .bind(body.ref, friend.id).run();
+        try {
+          const { incrementQrCodeScan, incrementQrCodeFriend } = await import('@line-crm/db');
+          await incrementQrCodeScan(db, body.ref);
+          if (linkRefResult.meta?.changes && linkRefResult.meta.changes > 0) {
+            await incrementQrCodeFriend(db, body.ref);
+          }
+        } catch { /* ignore */ }
       }
       // X Harness token resolution for already-linked friends
       if (body.ref && body.ref.startsWith('xh:')) {

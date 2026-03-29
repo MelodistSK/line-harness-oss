@@ -174,8 +174,10 @@ async function handleEvent(
       }
     }
 
-    // イベントバス発火: friend_add
-    await fireEvent(db, 'friend_add', { friendId: friend.id, eventData: { displayName: friend.display_name } }, lineAccessToken, lineAccountId);
+    // イベントバス発火: friend_add (include ref_code if available)
+    const freshFriend = await getFriendByLineUserId(db, userId);
+    const refCode = (freshFriend as unknown as Record<string, unknown>)?.ref_code as string | null;
+    await fireEvent(db, 'friend_add', { friendId: friend.id, eventData: { displayName: friend.display_name, refCode: refCode || null } }, lineAccessToken, lineAccountId);
     return;
   }
 
