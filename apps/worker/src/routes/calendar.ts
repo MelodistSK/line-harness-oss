@@ -501,12 +501,20 @@ calendar.post('/api/calendar/book', async (c) => {
       startTime: string;
       endTime: string;
       friendId?: string;
+      lineUserId?: string;
       serviceId?: string;
       bookingData: Record<string, unknown>;
     }>();
 
     if (!body.date || !body.startTime || !body.endTime || !body.bookingData) {
       return c.json({ success: false, error: 'date, startTime, endTime, and bookingData are required' }, 400);
+    }
+
+    // Resolve friendId from lineUserId if not provided
+    if (!body.friendId && body.lineUserId) {
+      const { getFriendByLineUserId } = await import('@line-crm/db');
+      const friend = await getFriendByLineUserId(c.env.DB, body.lineUserId);
+      if (friend) body.friendId = friend.id;
     }
 
     // Resolve service or legacy settings

@@ -293,7 +293,7 @@ async function submitBooking(){
     var body={date:selDate,startTime:selSlot.startAt,endTime:selSlot.endAt,bookingData:formData};
     if(selService)body.serviceId=selService.id;
     if(friendId)body.friendId=friendId;
-    if(profile)body.bookingData={...formData,lineDisplayName:profile.displayName};
+    if(profile){body.bookingData={...formData,lineDisplayName:profile.displayName};body.lineUserId=profile.userId;}
     var res=await api("/api/calendar/book",{method:"POST",body:JSON.stringify(body)});
     var json=await res.json();
     if(json.success){renderSuccess()}else{renderErr(json.error||"予約に失敗しました")}
@@ -305,13 +305,14 @@ async function init(){
     await liff.init({liffId:LIFF_ID});
     if(!liff.isLoggedIn()){liff.login({redirectUri:window.location.href});return}
     profile=await liff.getProfile();
-    // Silent UUID linking
+    // UUID linking — await so friendId is set before user can submit
     try{friendId=localStorage.getItem("lh_uuid")}catch{}
     var tok=liff.getIDToken();
     if(tok){
-      api("/api/liff/link",{method:"POST",body:JSON.stringify({idToken:tok,displayName:profile.displayName,existingUuid:friendId})})
-      .then(async function(r){if(r.ok){var d=await r.json();if(d?.data?.userId){try{localStorage.setItem("lh_uuid",d.data.userId);friendId=d.data.userId}catch{}}}})
-      .catch(function(){});
+      try{
+        var r=await api("/api/liff/link",{method:"POST",body:JSON.stringify({idToken:tok,displayName:profile.displayName,existingUuid:friendId})});
+        if(r.ok){var d=await r.json();if(d?.data?.userId){try{localStorage.setItem("lh_uuid",d.data.userId);friendId=d.data.userId}catch{}}}
+      }catch{}
     }
     await loadSettings();
     render();
