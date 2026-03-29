@@ -622,9 +622,14 @@ calendar.post('/api/calendar/book', async (c) => {
       }
     }
 
-    // Fire booking_created event with service info
+    // Fire booking_created event with service info (include lineUserId)
     try {
       const { fireEvent } = await import('../services/event-bus.js');
+      let lineUserId: string | null = null;
+      if (body.friendId) {
+        const f = await getFriendById(c.env.DB, body.friendId);
+        if (f) lineUserId = f.line_user_id;
+      }
       await fireEvent(c.env.DB, 'booking_created', {
         friendId: body.friendId,
         eventData: {
@@ -637,6 +642,7 @@ calendar.post('/api/calendar/book', async (c) => {
           serviceId: body.serviceId || null,
           serviceName: serviceName || null,
           calendarId: calendarId,
+          lineUserId,
         },
       });
     } catch (err) {
@@ -764,13 +770,18 @@ calendar.post('/api/calendar/book/:id/cancel', async (c) => {
 
     await updateCalendarBookingStatus(c.env.DB, id, 'cancelled');
 
-    // Fire booking_cancelled event
+    // Fire booking_cancelled event (include lineUserId)
     try {
       const { fireEvent } = await import('../services/event-bus.js');
       let serviceName: string | null = null;
       if (booking.service_id) {
         const svc = await getCalendarServiceById(c.env.DB, booking.service_id);
         if (svc) serviceName = svc.name;
+      }
+      let lineUserId: string | null = null;
+      if (booking.friend_id) {
+        const f = await getFriendById(c.env.DB, booking.friend_id);
+        if (f) lineUserId = f.line_user_id;
       }
       await fireEvent(c.env.DB, 'booking_cancelled', {
         friendId: booking.friend_id ?? undefined,
@@ -782,6 +793,7 @@ calendar.post('/api/calendar/book/:id/cancel', async (c) => {
           serviceId: booking.service_id,
           serviceName,
           bookingData: booking.booking_data ? JSON.parse(booking.booking_data) : null,
+          lineUserId,
         },
       }, c.env.LINE_CHANNEL_ACCESS_TOKEN);
     } catch (err) {

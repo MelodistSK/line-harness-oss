@@ -344,6 +344,13 @@ WORKER_URL=http://localhost:8787
 - **友だち詳細情報付きペイロード**: `friendId` があれば、名前・タグ一覧・スコアを自動付与してWebhook送信
 - 送信Webhookにシークレット署名（`X-Harness-Signature`）対応
 
+#### Webhook OUTルール
+- **全てのWebhook OUTイベントで、`friend.lineUserId` を必ず含めること。**
+- 新しいイベントを追加する際もこのルールを守ること。
+- `fireEvent()` 呼び出し時に `friendId` を渡せば `fireOutgoingWebhooks` が自動で `friend.lineUserId` を付与する。
+- `friendId` が不明な場合は `eventData.lineUserId` にLINE User IDを直接渡すこと（フォールバック解決される）。
+- イベントペイロード構造: `{ event, timestamp, friend: { id, lineUserId, displayName, ... }, eventData: { ... } }`
+
 ### 自動化（オートメーション）
 - IF-THENルール: イベント発生時に自動アクション実行
 - **アクション種別**: `add_tag` / `remove_tag` / `start_scenario` / `send_message` / `send_webhook` / `switch_rich_menu` / `update_metadata`

@@ -249,7 +249,7 @@ export async function processBookingReminders(
 
         await updateBookingReminderLogStatus(db, booking.id, reminder.id, 'sent');
 
-        // Fire webhook event
+        // Fire webhook event (include lineUserId)
         await fireEvent(db, 'booking_reminder_sent', {
           friendId: booking.friend_id,
           eventData: {
@@ -257,6 +257,7 @@ export async function processBookingReminders(
             reminderId: reminder.id,
             timing: `${reminder.timing_value} ${reminder.timing_unit}`,
             serviceName,
+            lineUserId: friend.line_user_id,
           },
         }, lineAccessToken);
 

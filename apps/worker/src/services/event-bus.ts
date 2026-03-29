@@ -70,6 +70,7 @@ async function fireOutgoingWebhooks(
     const webhooks = await getActiveOutgoingWebhooksByEvent(db, eventType);
     console.log(`fireOutgoingWebhooks: event=${eventType} 対象webhook数=${webhooks.length}`);
     // 友だち詳細情報を事前取得（friendId がある場合）
+    // ルール: 全Webhook OUTイベントで friend.lineUserId を必ず含める
     let friendDetail: Record<string, unknown> | null = null;
     if (payload.friendId) {
       try {
@@ -80,6 +81,7 @@ async function fireOutgoingWebhooks(
         ]);
         if (friend) {
           friendDetail = {
+            id: friend.id,
             lineUserId: friend.line_user_id,
             displayName: friend.display_name,
             pictureUrl: friend.picture_url,
@@ -91,6 +93,31 @@ async function fireOutgoingWebhooks(
         }
       } catch (err) {
         console.error('友だち詳細情報の取得失敗:', err);
+      }
+    }
+    // Guard: friendId未提供でもeventData.lineUserIdからfriendを解決
+    if (!friendDetail && payload.eventData?.lineUserId) {
+      try {
+        const { getFriendByLineUserId } = await import('@line-crm/db');
+        const friend = await getFriendByLineUserId(db, payload.eventData.lineUserId as string);
+        if (friend) {
+          const [tags, score] = await Promise.all([
+            getFriendTags(db, friend.id),
+            getFriendScore(db, friend.id),
+          ]);
+          friendDetail = {
+            id: friend.id,
+            lineUserId: friend.line_user_id,
+            displayName: friend.display_name,
+            pictureUrl: friend.picture_url,
+            tags: tags.map((t) => ({ id: t.id, name: t.name })),
+            score,
+            metadata: (() => { try { return JSON.parse(friend.metadata); } catch { return {}; } })(),
+            createdAt: friend.created_at,
+          };
+        }
+      } catch (err) {
+        console.error('lineUserIdからの友だち解決失敗:', err);
       }
     }
 
