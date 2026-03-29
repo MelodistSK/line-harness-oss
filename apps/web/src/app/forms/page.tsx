@@ -31,7 +31,7 @@ interface Form {
   kintoneEnabled: boolean
   kintoneSubdomain: string | null
   kintoneAppId: string | null
-  kintoneApiToken: string | null
+  kintoneApiTokenSet: boolean
   kintoneFieldMapping: Record<string, string> | null
   createdAt: string
   updatedAt: string
@@ -193,7 +193,7 @@ function FormBuilder({ form, tags, scenarios, onSaved, setError, setSuccess }: {
   const [kintoneEnabled, setKintoneEnabled] = useState(form?.kintoneEnabled || false)
   const [kintoneSubdomain, setKintoneSubdomain] = useState(form?.kintoneSubdomain || '')
   const [kintoneAppId, setKintoneAppId] = useState(form?.kintoneAppId || '')
-  const [kintoneApiToken, setKintoneApiToken] = useState(form?.kintoneApiToken || '')
+  const [kintoneApiToken, setKintoneApiToken] = useState('')
   const [kintoneFieldMapping, setKintoneFieldMapping] = useState<Record<string, string>>(form?.kintoneFieldMapping || {})
   const [kintoneFields, setKintoneFields] = useState<{ code: string; label: string; type: string }[]>([])
   const [saving, setSaving] = useState(false)
@@ -272,7 +272,7 @@ function FormBuilder({ form, tags, scenarios, onSaved, setError, setSuccess }: {
         submitReplyType: replyType,
         submitReplyContent: replyContent || null,
         kintoneEnabled, kintoneSubdomain: kintoneSubdomain || null,
-        kintoneAppId: kintoneAppId || null, kintoneApiToken: kintoneApiToken || null,
+        kintoneAppId: kintoneAppId || null, ...(kintoneApiToken ? { kintoneApiToken } : {}),
         kintoneFieldMapping: Object.keys(kintoneFieldMapping).length > 0 ? kintoneFieldMapping : null,
       }
       const isUpdate = form && form.id
@@ -517,6 +517,7 @@ function FormBuilder({ form, tags, scenarios, onSaved, setError, setSuccess }: {
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">APIトークン</label>
                     <input type="password" value={kintoneApiToken} onChange={(e) => setKintoneApiToken(e.target.value)}
+                      placeholder={form?.kintoneApiTokenSet ? '（設定済み・変更する場合のみ入力）' : ''}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
                   </div>
                 </div>

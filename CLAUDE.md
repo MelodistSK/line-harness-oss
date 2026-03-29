@@ -272,7 +272,7 @@ WORKER_URL=http://localhost:8787
   - トリガー: `friend_add` / `tag_added` / `manual`
   - メッセージ種別: テキスト・画像・Flex・カルーセル・動画・リッチメニュー切替
   - クイックリプライ対応
-  - 変数展開: `{{name}}` / `{{uid}}` / `{{ref}}` / `{{#if_ref}}...{{/if_ref}}`
+  - 変数展開: `{{name}}` / `{{uid}}` / `{{score}}` / `{{ref}}` / `{{#if_ref}}...{{/if_ref}}`
   - 配信時間帯制御（9:00〜23:00 JST）・ジッター付き
   - 条件分岐: `tag_exists` / `tag_not_exists` / `metadata_equals` / `metadata_not_equals`
 
@@ -300,7 +300,7 @@ WORKER_URL=http://localhost:8787
 - **9種フィールド**: `text` / `email` / `tel` / `number` / `textarea` / `select` / `radio` / `checkbox` / `date` / `file`
 - 送信時タグ付与・シナリオ自動登録
 - メタデータ保存（スコアリングと連携）
-- **Kintone連携**: サブドメイン・AppID・APIトークン・フィールドマッピング設定
+- **Kintone連携**: サブドメイン・AppID・APIトークン（APIレスポンスではマスク済み）・フィールドマッピング設定
 - 回答一覧・CSV エクスポート
 
 ### メディアストレージ（R2 + KVフォールバック）
@@ -313,6 +313,7 @@ WORKER_URL=http://localhost:8787
 - **移行API**: `POST /api/assets/migrate-to-r2`（KV→R2一括コピー）
 - **LIFFアプリ**はKV配信（`liff-index.html` / `liff.js`）
 - **動画配信要件**: Content-Type: video/mp4, Accept-Ranges: bytes, 206 Partial Content対応（LINE API必須）
+- **動画プレビュー**: フォールバック画像はR2自己ホスト（`/assets/video-preview-default.png`）、外部サービス依存なし
 
 ### リッチメニュービルダー
 - リッチメニュー作成・削除・デフォルト設定
@@ -607,11 +608,15 @@ pnpm -r run build
 22. 環境変数の改行バグ防止（.trim() 徹底）
 23. 全管理ページに編集・複製・削除確認機能
 24. Google Calendar予約システム（サービスアカウントJWT認証、管理画面設定、LIFF予約）
-25. テンプレート変数展開（一斉配信: {{name}}/{{score}}/{{uid}}）
-26. 動画メッセージ完全対応（R2配信、Range request、CORS、プレビュー）
+25. テンプレート変数展開（全配信共通: {{name}}/{{score}}/{{uid}}/{{ref}}/{{friend_id}}、expandVariables統一済み）
+26. 動画メッセージ完全対応（R2配信、Range request、CORS、プレビュー画像R2自己ホスト）
 27. チャット画面の自動スクロール（最新メッセージへ）
-28. 予約リマインダー自動配信（複数設定、テンプレート変数、キャンセルボタン、LIFFキャンセルページ）
+28. 予約リマインダー自動配信（複数設定、テンプレート変数、キャンセルボタン、LIFFキャンセルページ、マルチアカウント対応）
 29. トラッキングリンクのlu自動付与（全pushMessageパスで友だち識別パラメータ埋め込み）
+30. カレンダー予約確認メッセージのマルチアカウント対応
+31. kintone APIトークン・Google秘密鍵のAPIレスポンスマスク
+32. フォーム送信後Flex変数に{{lineUserId}}/{{score}}追加
+33. webhook.tsデモコード削除（autoKeywords最小化、クロスアカウントデモ削除）
 
 ### 今後の拡張想定
 - **Stripe 決済連携** (基盤実装済み)

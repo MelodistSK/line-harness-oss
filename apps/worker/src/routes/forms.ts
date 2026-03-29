@@ -33,7 +33,7 @@ function serializeForm(row: DbForm & { kintone_enabled?: number; kintone_subdoma
     kintoneEnabled: Boolean(row.kintone_enabled),
     kintoneSubdomain: row.kintone_subdomain ?? null,
     kintoneAppId: row.kintone_app_id ?? null,
-    kintoneApiToken: row.kintone_api_token ?? null,
+    kintoneApiTokenSet: !!row.kintone_api_token,
     kintoneFieldMapping: row.kintone_field_mapping ? JSON.parse(row.kintone_field_mapping) : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -163,16 +163,29 @@ forms.put('/api/forms/:id', async (c) => {
     // Update kintone fields if provided
     const kb = body as Record<string, unknown>;
     if (kb.kintoneEnabled !== undefined) {
-      await c.env.DB.prepare(
-        `UPDATE forms SET kintone_enabled = ?, kintone_subdomain = ?, kintone_app_id = ?, kintone_api_token = ?, kintone_field_mapping = ? WHERE id = ?`
-      ).bind(
-        kb.kintoneEnabled ? 1 : 0,
-        (kb.kintoneSubdomain as string) || null,
-        (kb.kintoneAppId as string) || null,
-        (kb.kintoneApiToken as string) || null,
-        kb.kintoneFieldMapping ? JSON.stringify(kb.kintoneFieldMapping) : null,
-        id,
-      ).run();
+      // Preserve existing token when not provided (masked in API response)
+      if (kb.kintoneApiToken) {
+        await c.env.DB.prepare(
+          `UPDATE forms SET kintone_enabled = ?, kintone_subdomain = ?, kintone_app_id = ?, kintone_api_token = ?, kintone_field_mapping = ? WHERE id = ?`
+        ).bind(
+          kb.kintoneEnabled ? 1 : 0,
+          (kb.kintoneSubdomain as string) || null,
+          (kb.kintoneAppId as string) || null,
+          (kb.kintoneApiToken as string),
+          kb.kintoneFieldMapping ? JSON.stringify(kb.kintoneFieldMapping) : null,
+          id,
+        ).run();
+      } else {
+        await c.env.DB.prepare(
+          `UPDATE forms SET kintone_enabled = ?, kintone_subdomain = ?, kintone_app_id = ?, kintone_field_mapping = ? WHERE id = ?`
+        ).bind(
+          kb.kintoneEnabled ? 1 : 0,
+          (kb.kintoneSubdomain as string) || null,
+          (kb.kintoneAppId as string) || null,
+          kb.kintoneFieldMapping ? JSON.stringify(kb.kintoneFieldMapping) : null,
+          id,
+        ).run();
+      }
     }
 
     // Update submit_reply fields if provided
@@ -340,7 +353,9 @@ forms.post('/api/forms/:id/submit', async (c) => {
 
             if (form.submit_reply_content) {
               // Use configurable message with variable substitution
-              const vars: Record<string, string> = { name: friend.display_name || '' };
+              const { getFriendScore } = await import('@line-crm/db');
+              const score = await getFriendScore(db, friendId!);
+              const vars: Record<string, string> = { name: friend.display_name || '', lineUserId: friend.line_user_id, score: String(score) };
               for (const [key, val] of Object.entries(submissionData as Record<string, unknown>)) {
                 vars[key] = Array.isArray(val) ? val.join(', ') : String(val ?? '');
               }
@@ -394,12 +409,6 @@ forms.post('/api/forms/:id/submit', async (c) => {
                     }] : []),
                   ],
                   paddingAll: '20px',
-                },
-                footer: {
-                  type: 'box', layout: 'vertical', paddingAll: '16px',
-                  contents: [
-                    { type: 'button', action: { type: 'message', label: 'アカウント連携を見る', text: 'アカウント連携を見る' }, style: 'primary', color: '#14b8a6' },
-                  ],
                 },
               };
               await lineClient.pushMessage(friend.line_user_id, [buildMessage('flex', JSON.stringify(flex))]);

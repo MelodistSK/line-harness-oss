@@ -7,7 +7,7 @@ import type { Broadcast } from '@line-crm/db';
 import type { LineClient } from '@line-crm/line-sdk';
 import { calculateStaggerDelay, sleep, addMessageVariation } from './stealth.js';
 import { buildSegmentQuery } from './segment-query.js';
-import { buildMessage } from './step-delivery.js';
+import { buildMessage, expandVariables } from './step-delivery.js';
 import { personalizeTrackingUrls } from './auto-track.js';
 import type { SegmentCondition } from './segment-query.js';
 
@@ -19,13 +19,6 @@ interface FriendRow {
   line_user_id: string;
   display_name: string | null;
   score: number;
-}
-
-function expandVariables(text: string, friend: FriendRow): string {
-  return text
-    .replace(/\{\{name\}\}/g, friend.display_name ?? '')
-    .replace(/\{\{score\}\}/g, String(friend.score ?? 0))
-    .replace(/\{\{uid\}\}/g, friend.line_user_id);
 }
 
 function hasTemplateVariables(content: string): boolean {
@@ -69,7 +62,7 @@ export async function processSegmentSend(
       console.log(`[segment-send] Variable expansion ON — sending individually to ${friends.length} friends`);
       for (let i = 0; i < friends.length; i++) {
         const friend = friends[i];
-        const expandedContent = expandVariables(broadcast.message_content, friend);
+        const expandedContent = expandVariables(broadcast.message_content, { id: friend.id, display_name: friend.display_name, user_id: friend.line_user_id, score: friend.score });
         const personalizedContent = personalizeTrackingUrls(expandedContent, friend.line_user_id);
         const personalMessage = buildMessage(broadcast.message_type, personalizedContent);
 

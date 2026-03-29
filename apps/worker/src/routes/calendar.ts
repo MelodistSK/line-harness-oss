@@ -619,7 +619,13 @@ calendar.post('/api/calendar/book', async (c) => {
         const friend = await getFriendById(c.env.DB, body.friendId);
         if (friend?.line_user_id) {
           const { LineClient } = await import('@line-crm/line-sdk');
-          const lineClient = new LineClient(c.env.LINE_CHANNEL_ACCESS_TOKEN);
+          let bookingAccessToken = c.env.LINE_CHANNEL_ACCESS_TOKEN;
+          if ((friend as unknown as Record<string, unknown>).line_account_id) {
+            const { getLineAccountById } = await import('@line-crm/db');
+            const account = await getLineAccountById(c.env.DB, (friend as unknown as Record<string, unknown>).line_account_id as string);
+            if (account) bookingAccessToken = account.channel_access_token;
+          }
+          const lineClient = new LineClient(bookingAccessToken);
           const defaultReply = serviceName
             ? `ご予約ありがとうございます。\n\nサービス: ${serviceName}\n日時: ${body.date} ${body.startTime}〜${body.endTime}\nお名前: ${name}\n\n確認後、改めてご連絡いたします。`
             : `ご予約ありがとうございます。\n\n日時: ${body.date} ${body.startTime}〜${body.endTime}\nお名前: ${name}\n\n確認後、改めてご連絡いたします。`;
@@ -791,6 +797,16 @@ calendar.post('/api/calendar/book/:id/cancel', async (c) => {
         const f = await getFriendById(c.env.DB, booking.friend_id);
         if (f) lineUserId = f.line_user_id;
       }
+      // Resolve access token from friend's account (multi-account support)
+      let cancelAccessToken = c.env.LINE_CHANNEL_ACCESS_TOKEN;
+      if (booking.friend_id) {
+        const f2 = await getFriendById(c.env.DB, booking.friend_id);
+        if (f2 && (f2 as unknown as Record<string, unknown>).line_account_id) {
+          const { getLineAccountById } = await import('@line-crm/db');
+          const account = await getLineAccountById(c.env.DB, (f2 as unknown as Record<string, unknown>).line_account_id as string);
+          if (account) cancelAccessToken = account.channel_access_token;
+        }
+      }
       await fireEvent(c.env.DB, 'booking_cancelled', {
         friendId: booking.friend_id ?? undefined,
         eventData: {
@@ -803,7 +819,7 @@ calendar.post('/api/calendar/book/:id/cancel', async (c) => {
           bookingData: booking.booking_data ? JSON.parse(booking.booking_data) : null,
           lineUserId,
         },
-      }, c.env.LINE_CHANNEL_ACCESS_TOKEN);
+      }, cancelAccessToken);
     } catch (err) {
       console.warn('booking_cancelled fireEvent failed:', err);
     }

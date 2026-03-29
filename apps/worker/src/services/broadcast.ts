@@ -9,19 +9,12 @@ import type { Broadcast } from '@line-crm/db';
 import type { LineClient } from '@line-crm/line-sdk';
 import type { Message } from '@line-crm/line-sdk';
 import { calculateStaggerDelay, sleep, addMessageVariation } from './stealth.js';
-import { buildMessage } from './step-delivery.js';
+import { buildMessage, expandVariables } from './step-delivery.js';
 import { personalizeTrackingUrls } from './auto-track.js';
 import type { Friend } from '@line-crm/db';
 
 const MULTICAST_BATCH_SIZE = 500;
 const TEMPLATE_VAR_RE = /\{\{(name|score|uid)\}\}/;
-
-function expandVariables(text: string, friend: Friend): string {
-  return text
-    .replace(/\{\{name\}\}/g, friend.display_name ?? '')
-    .replace(/\{\{score\}\}/g, String(friend.score ?? 0))
-    .replace(/\{\{uid\}\}/g, friend.line_user_id);
-}
 
 function hasTemplateVariables(content: string): boolean {
   return TEMPLATE_VAR_RE.test(content);
@@ -76,7 +69,7 @@ export async function processBroadcastSend(
       const now = jstNow();
       for (let i = 0; i < followingFriends.length; i++) {
         const friend = followingFriends[i];
-        const expandedContent = expandVariables(finalContent, friend);
+        const expandedContent = expandVariables(finalContent, { id: friend.id, display_name: friend.display_name, user_id: friend.line_user_id, score: friend.score });
         const personalizedContent = personalizeTrackingUrls(expandedContent, friend.line_user_id);
         console.log(`[broadcast] friend=${friend.display_name} expanded=${personalizedContent.slice(0, 100)}`);
         const personalMessage = buildMessage(finalType, personalizedContent);
@@ -120,7 +113,7 @@ export async function processBroadcastSend(
         // Per-friend send with variable expansion
         for (let i = 0; i < followingFriends.length; i++) {
           const friend = followingFriends[i];
-          const expandedContent = expandVariables(finalContent, friend);
+          const expandedContent = expandVariables(finalContent, { id: friend.id, display_name: friend.display_name, user_id: friend.line_user_id, score: friend.score });
           const personalizedContent = personalizeTrackingUrls(expandedContent, friend.line_user_id);
           console.log(`[broadcast] friend=${friend.display_name} uid=${friend.line_user_id} expanded=${personalizedContent.slice(0, 100)}`);
           const personalMessage = buildMessage(finalType, personalizedContent);

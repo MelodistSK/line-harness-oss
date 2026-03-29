@@ -4,6 +4,7 @@ import {
   advanceFriendScenario,
   completeFriendScenario,
   getFriendById,
+  getFriendScore,
   jstNow,
 } from '@line-crm/db';
 import type { LineClient } from '@line-crm/line-sdk';
@@ -18,17 +19,19 @@ import { personalizeTrackingUrls } from './auto-track.js';
  * - {{name}}                → friend's display name
  * - {{uid}}                 → friend's user UUID
  * - {{friend_id}}           → friend's internal ID
+ * - {{score}}               → friend's score
  * - {{auth_url:CHANNEL_ID}} → full /auth/line URL with uid for cross-account linking
  */
 export function expandVariables(
   content: string,
-  friend: { id: string; display_name: string | null; user_id: string | null; ref_code?: string | null },
+  friend: { id: string; display_name: string | null; user_id: string | null; ref_code?: string | null; score?: number | null },
   apiOrigin?: string,
 ): string {
   let result = content;
   result = result.replace(/\{\{name\}\}/g, friend.display_name || '');
   result = result.replace(/\{\{uid\}\}/g, friend.user_id || '');
   result = result.replace(/\{\{friend_id\}\}/g, friend.id);
+  result = result.replace(/\{\{score\}\}/g, String(friend.score ?? 0));
   result = result.replace(/\{\{ref\}\}/g, friend.ref_code || '');
   // Conditional block: {{#if_ref}}...{{/if_ref}} — only shown if ref_code exists
   if (friend.ref_code) {
@@ -472,8 +475,8 @@ export function buildMessage(messageType: string, messageContent: string): Messa
     try {
       const parsed = JSON.parse(messageContent) as { originalContentUrl: string; previewImageUrl: string; _quickReply?: QuickReplyItemDef[] };
       // LINE requires previewImageUrl to be a JPEG/PNG image, not a video URL.
-      // Use a 1x1 transparent PNG as fallback when no preview image is provided.
-      const FALLBACK_PREVIEW = 'https://placehold.co/320x180/1a1a2e/ffffff.png?text=Video';
+      // Use a self-hosted R2 fallback image instead of an external service.
+      const FALLBACK_PREVIEW = 'https://line-harness-mamayoro.s-kamiya.workers.dev/assets/video-preview-default.png';
       const previewUrl = parsed.previewImageUrl?.trim() || FALLBACK_PREVIEW;
       const msg: Record<string, unknown> = {
         type: 'video',

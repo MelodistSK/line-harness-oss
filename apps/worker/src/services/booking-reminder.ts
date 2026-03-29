@@ -14,10 +14,11 @@ import {
   updateBookingReminderLogStatus,
   getCalendarServiceById,
   getFriendById,
+  getLineAccountById,
   jstNow,
 } from '@line-crm/db';
 import type { CalendarBookingRow, BookingReminderRow } from '@line-crm/db';
-import type { LineClient } from '@line-crm/line-sdk';
+import { LineClient } from '@line-crm/line-sdk';
 import { fireEvent } from './event-bus.js';
 
 /** Convert timing to milliseconds */
@@ -211,6 +212,14 @@ export async function processBookingReminders(
       const friend = await getFriendById(db, booking.friend_id);
       if (!friend?.line_user_id) continue;
 
+      // Resolve access token from friend's account (multi-account support)
+      let friendAccessToken = lineAccessToken;
+      if ((friend as unknown as Record<string, unknown>).line_account_id) {
+        const account = await getLineAccountById(db, (friend as unknown as Record<string, unknown>).line_account_id as string);
+        if (account) friendAccessToken = account.channel_access_token;
+      }
+      const friendLineClient = new LineClient(friendAccessToken);
+
       // Resolve service name
       let serviceName: string | null = null;
       if (booking.service_id) {
@@ -245,7 +254,7 @@ export async function processBookingReminders(
         // Build and send LINE message
         const { buildMessage } = await import('./step-delivery.js');
         const message = buildMessage(messageType, messageContent);
-        await lineClient.pushMessage(friend.line_user_id, [message]);
+        await friendLineClient.pushMessage(friend.line_user_id, [message]);
 
         await updateBookingReminderLogStatus(db, booking.id, reminder.id, 'sent');
 
@@ -259,7 +268,7 @@ export async function processBookingReminders(
             serviceName,
             lineUserId: friend.line_user_id,
           },
-        }, lineAccessToken);
+        }, friendAccessToken);
 
       } catch (err) {
         console.error(`[booking-reminder] Failed to send reminder ${reminder.id} for booking ${booking.id}:`, err);
