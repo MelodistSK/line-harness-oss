@@ -139,7 +139,7 @@ wrangler d1 execute line-crm --file packages/db/schema-full.sql --remote
 
 # マイグレーション実行
 wrangler d1 execute line-crm --file packages/db/migrations/001_round2.sql --remote
-# ... 009 まで
+# ... 018 まで
 ```
 
 ### デプロイ
@@ -338,6 +338,8 @@ WORKER_URL=http://localhost:8787
   | `cv_fire` | コンバージョン発生時 |
   | `score_threshold` | スコア閾値到達時 |
   | `calendar_booked` | カレンダー予約時 |
+  | `booking_reminder_sent` | 予約リマインダー送信時 |
+  | `booking_cancelled` | 予約キャンセル時 |
 
 - **友だち詳細情報付きペイロード**: `friendId` があれば、名前・タグ一覧・スコアを自動付与してWebhook送信
 - 送信Webhookにシークレット署名（`X-Harness-Signature`）対応
@@ -389,6 +391,18 @@ WORKER_URL=http://localhost:8787
   - 二重予約防止: 予約作成時にGCal + D1の両方で再確認
   - メッセージ種別「予約」: Flex自動生成、サービス指定可能、全送信画面で利用可能
   - Webhook OUT: `booking_created` イベントに `serviceId` / `serviceName` / `calendarId` を含む
+  - **予約リマインダー自動配信**: 予約前にLINEリマインダーを自動送信
+    - 複数リマインダー設定可能（例: 3日前、1日前、1時間前）
+    - タイミング: ○日前 / ○時間前 / ○分前（自由入力）
+    - メッセージタイプ: テキスト / Flex（カスタムまたはデフォルトテンプレート）
+    - 変数展開: `{{name}}` / `{{date}}` / `{{time}}` / `{{serviceName}}` / `{{bookingData.phone}}` 等
+    - サービスごとに異なるリマインダー設定が可能（またはグローバル共通）
+    - キャンセルボタン付き: ONの場合、FlexにLIFFキャンセルページへのリンクボタンを自動追加
+    - LIFF予約キャンセルページ: `/liff/booking/cancel?id={bookingId}`（確認画面 → キャンセル → GCal削除 + Webhook）
+    - 管理画面: `/calendar` 設定タブにリマインダーセクション（CRUD、プレビュー、デフォルトテンプレート挿入）
+    - Webhook OUT: `booking_reminder_sent` / `booking_cancelled` イベント
+    - `booking_reminders` / `booking_reminder_logs` テーブル（マイグレーション018）
+    - Cron: 5分毎に既存cronで `processBookingReminders` を実行（二重送信防止ログ付き）
 - **QRコード別流入計測**:
   - QRコード作成・管理（`qr_codes`テーブル）: 名前、refコード自動生成、LIFF友だち追加URLのQR画像生成
   - スキャン数・友だち追加数カウント（LIFF link時に自動インクリメント）
@@ -431,6 +445,7 @@ affiliates, affiliate_clicks
 
 # Google Calendar
 google_calendar_connections, calendar_bookings, calendar_settings, calendar_services
+booking_reminders, booking_reminder_logs
 
 # 決済
 stripe_events
@@ -588,6 +603,8 @@ pnpm -r run build
 25. テンプレート変数展開（一斉配信: {{name}}/{{score}}/{{uid}}）
 26. 動画メッセージ完全対応（R2配信、Range request、CORS、プレビュー）
 27. チャット画面の自動スクロール（最新メッセージへ）
+28. 予約リマインダー自動配信（複数設定、テンプレート変数、キャンセルボタン、LIFFキャンセルページ）
+29. トラッキングリンクのlu自動付与（全pushMessageパスで友だち識別パラメータ埋め込み）
 
 ### 今後の拡張想定
 - **Stripe 決済連携** (基盤実装済み)
@@ -612,4 +629,4 @@ pnpm -r run build
 
 ---
 
-**最終更新**: 2026年3月29日
+**最終更新**: 2026年3月30日
