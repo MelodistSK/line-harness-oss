@@ -35,6 +35,7 @@ import { forms } from './routes/forms.js';
 import { assets } from './routes/assets.js';
 import { richMenuMappings } from './routes/rich-menu-mappings.js';
 import { adPlatforms } from './routes/ad-platforms.js';
+import { generateBookingHtml, generateFormHtml } from './liff-pages.js';
 
 export type Env = {
   Bindings: {
@@ -142,6 +143,25 @@ app.get('/liff', async (c) => {
   const html = await c.env.ASSETS_KV.get('liff-index.html', 'text');
   if (!html) return c.json({ success: false, error: 'LIFF app not found' }, 404);
   return new Response(html, {
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  });
+});
+
+// LIFF Booking — standalone page, NO friend-add flow
+app.get('/liff/booking', (c) => {
+  const liffId = c.env.LIFF_URL?.match(/liff\.line\.me\/([^?/]+)/)?.[1] || '2009615537-8qwrEnEt';
+  const workerUrl = c.env.WORKER_URL || new URL(c.req.url).origin;
+  return new Response(generateBookingHtml(liffId, workerUrl), {
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  });
+});
+
+// LIFF Form — standalone page, NO friend-add flow
+app.get('/liff/form', (c) => {
+  const liffId = c.env.LIFF_URL?.match(/liff\.line\.me\/([^?/]+)/)?.[1] || '2009615537-8qwrEnEt';
+  const workerUrl = c.env.WORKER_URL || new URL(c.req.url).origin;
+  const formId = new URL(c.req.url).searchParams.get('id') || '';
+  return new Response(generateFormHtml(liffId, workerUrl, formId), {
     headers: { 'Content-Type': 'text/html; charset=utf-8' },
   });
 });
