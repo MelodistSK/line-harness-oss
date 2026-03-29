@@ -164,7 +164,7 @@ function render(){
   if(step==="service"){
     html+=renderServiceSelection();
   }else if(step==="calendar"){
-    if(allServices.length>1)html+='<p style="text-align:center;margin-bottom:8px"><a href="#" id="backToSvc" style="font-size:13px;color:#06C755">&larr; メニュー選択に戻る</a></p>';
+    if(allServices.length>1&&!preServiceId)html+='<p style="text-align:center;margin-bottom:8px"><a href="#" id="backToSvc" style="font-size:13px;color:#06C755">&larr; メニュー選択に戻る</a></p>';
     html+=renderCal()+renderSlots();
   }else if(step==="form"){
     html=renderForm();
@@ -185,7 +185,7 @@ function renderSuccess(){
 function renderErr(msg){
   app().innerHTML='<div class="card" style="text-align:center"><h2 style="color:#e53e3e">エラー</h2><p class="err">'+esc(msg)+'</p><button class="btn btn-secondary" id="retryBtn" style="margin-top:16px">やり直す</button></div>';
   const rb=document.getElementById("retryBtn");
-  if(rb)rb.onclick=function(){selDate=null;selSlot=null;slots=[];step=allServices.length>1?"service":"calendar";render()};
+  if(rb)rb.onclick=function(){selDate=null;selSlot=null;slots=[];step=(allServices.length>1&&!preServiceId)?"service":"calendar";render()};
 }
 
 function bind(){
