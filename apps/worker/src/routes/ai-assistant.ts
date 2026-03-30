@@ -6,7 +6,7 @@ import {
   getScenarios, getScenarioById, createScenario, createScenarioStep, enrollFriendInScenario,
   getBroadcasts, createBroadcast,
   getTemplates, createTemplate,
-  getForms, getFormSubmissions,
+  getForms, createForm, getFormSubmissions,
   getAutomations, createAutomation,
   getScoringRules, createScoringRule,
   getOutgoingWebhooks, createOutgoingWebhook,
@@ -72,6 +72,7 @@ const DESTRUCTIVE_TOOLS = new Set([
   'create_outgoing_webhook', 'create_tracked_link', 'create_qr_code',
   'create_reminder', 'create_calendar_service', 'cancel_booking',
   'update_friend_metadata',
+  'create_form',
   'create_rich_menu', 'link_rich_menu_to_user', 'set_default_rich_menu',
 ]);
 
@@ -311,6 +312,34 @@ function getToolDefinitions() {
           formId: { type: 'string', description: 'フォームID' },
         },
         required: ['formId'],
+      },
+    },
+    {
+      name: 'create_form',
+      description: 'フォームを作成します。fieldsはフィールド定義の配列（JSON文字列）。',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          name: { type: 'string', description: 'フォーム名' },
+          description: { type: 'string', description: '説明' },
+          fields: {
+            type: 'array',
+            description: 'フィールド定義の配列',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string', description: 'フィールド名（英字）' },
+                label: { type: 'string', description: '表示ラベル' },
+                type: { type: 'string', description: 'フィールド種別', enum: ['text', 'email', 'tel', 'number', 'textarea', 'select', 'radio', 'checkbox', 'date', 'file'] },
+                required: { type: 'boolean', description: '必須かどうか' },
+                options: { type: 'array', description: '選択肢（select/radio/checkboxの場合）', items: { type: 'string' } },
+              },
+            },
+          },
+          onSubmitTagId: { type: 'string', description: '送信時に付与するタグID' },
+          onSubmitScenarioId: { type: 'string', description: '送信時に開始するシナリオID' },
+        },
+        required: ['name', 'fields'],
       },
     },
     // 【リッチメニュー管理】
@@ -797,6 +826,18 @@ async function executeTool(
         data: s.data ? JSON.parse(s.data) : {},
         createdAt: s.created_at,
       }));
+    }
+
+    case 'create_form': {
+      const fields = Array.isArray(toolInput.fields) ? toolInput.fields : JSON.parse(toolInput.fields as string);
+      const form = await createForm(db, {
+        name: toolInput.name as string,
+        description: (toolInput.description as string) || null,
+        fields: JSON.stringify(fields),
+        onSubmitTagId: toolInput.onSubmitTagId as string | undefined,
+        onSubmitScenarioId: toolInput.onSubmitScenarioId as string | undefined,
+      });
+      return { id: form.id, name: form.name };
     }
 
     // リッチメニュー（LINE API経由）
@@ -1312,6 +1353,7 @@ function describeToolAction(toolName: string, input: Record<string, unknown>): s
     add_scenario_step: (i) => `シナリオにステップを追加`,
     enroll_friend_in_scenario: (i) => `友だちをシナリオに登録`,
     create_template: (i) => `テンプレート「${i.name}」を作成`,
+    create_form: (i) => `フォーム「${i.name}」を作成`,
     create_automation: (i) => `オートメーション「${i.name}」を作成`,
     create_scoring_rule: (i) => `スコアリングルール「${i.name}」を作成`,
     create_outgoing_webhook: (i) => `Webhook「${i.name}」を作成`,
