@@ -21,6 +21,28 @@ import { LineClient } from '@line-crm/line-sdk';
 
 export const aiAssistant = new Hono<Env>();
 
+// ── Booking Flex generator (same logic as frontend) ──
+
+function generateBookingFlex(workerUrl: string, serviceId?: string): string {
+  const liffUrl = serviceId
+    ? `${workerUrl}/liff/booking?serviceId=${serviceId}`
+    : `${workerUrl}/liff/booking`;
+  return JSON.stringify({
+    type: 'bubble',
+    body: {
+      type: 'box', layout: 'vertical', contents: [
+        { type: 'text', text: 'ご予約はこちら', weight: 'bold', size: 'lg', wrap: true },
+        { type: 'text', text: 'ご都合の良い日時をお選びください', color: '#666666', size: 'sm', wrap: true, margin: 'md' },
+      ],
+    },
+    footer: {
+      type: 'box', layout: 'vertical', contents: [
+        { type: 'button', action: { type: 'uri', label: '予約する', uri: liffUrl }, style: 'primary', color: '#06C755' },
+      ],
+    },
+  });
+}
+
 // ── Types ──
 
 interface ChatMessage {
@@ -229,10 +251,11 @@ function getToolDefinitions() {
           scenarioId: { type: 'string', description: 'シナリオID' },
           stepOrder: { type: 'number', description: 'ステップ順序' },
           delayMinutes: { type: 'number', description: '遅延時間（分）' },
-          messageType: { type: 'string', description: 'メッセージ種別', enum: ['text', 'image', 'flex', 'carousel', 'video', 'rich_menu', 'form', 'booking'] },
-          messageContent: { type: 'string', description: 'メッセージ内容' },
+          messageType: { type: 'string', description: 'メッセージ種別（bookingは自動でflexに変換）', enum: ['text', 'image', 'flex', 'carousel', 'video', 'rich_menu', 'form', 'booking'] },
+          messageContent: { type: 'string', description: 'メッセージ内容（booking時は省略可、自動生成）' },
+          serviceId: { type: 'string', description: '予約サービスID（booking時のオプション）' },
         },
-        required: ['scenarioId', 'stepOrder', 'messageType', 'messageContent'],
+        required: ['scenarioId', 'stepOrder', 'messageType'],
       },
     },
     {
@@ -613,8 +636,14 @@ async function executeTool(
       const friend = await getFriendById(db, toolInput.friendId as string);
       if (!friend) return { error: '友だちが見つかりません' };
       const lineClient = new LineClient(env.LINE_CHANNEL_ACCESS_TOKEN);
-      const msgType = toolInput.messageType as string;
-      const content = toolInput.content as string;
+      let msgType = toolInput.messageType as string;
+      let content = toolInput.content as string;
+      // booking → flex変換
+      if (msgType === 'booking') {
+        msgType = 'flex';
+        const workerUrl = env.WORKER_URL || '';
+        content = generateBookingFlex(workerUrl);
+      }
       let messages: unknown[];
       if (msgType === 'text') {
         messages = [{ type: 'text', text: content }];
@@ -632,10 +661,17 @@ async function executeTool(
     }
 
     case 'create_broadcast': {
+      let bcMsgType = toolInput.messageType as string;
+      let bcMsgContent = toolInput.messageContent as string;
+      if (bcMsgType === 'booking') {
+        bcMsgType = 'flex';
+        bcMsgContent = generateBookingFlex(env.WORKER_URL || '');
+      }
+      if (bcMsgType === 'form') bcMsgType = 'flex';
       const broadcast = await createBroadcast(db, {
         title: toolInput.title as string,
-        messageType: toolInput.messageType as 'text' | 'image' | 'flex' | 'carousel' | 'video',
-        messageContent: toolInput.messageContent as string,
+        messageType: bcMsgType as 'text' | 'image' | 'flex' | 'carousel' | 'video',
+        messageContent: bcMsgContent,
         targetType: toolInput.targetType as 'all' | 'tag',
         targetTagId: toolInput.targetTagId as string | undefined,
         scheduledAt: toolInput.scheduledAt as string | undefined,
@@ -685,12 +721,25 @@ async function executeTool(
     }
 
     case 'add_scenario_step': {
+      let msgType = toolInput.messageType as string;
+      let msgContent = toolInput.messageContent as string;
+      // booking → flex変換（DBにはflexとして保存）
+      if (msgType === 'booking') {
+        msgType = 'flex';
+        const workerUrl = env.WORKER_URL || '';
+        const serviceId = toolInput.serviceId as string | undefined;
+        msgContent = generateBookingFlex(workerUrl, serviceId);
+      }
+      // form → flex変換
+      if (msgType === 'form') {
+        msgType = 'flex';
+      }
       const step = await createScenarioStep(db, {
         scenarioId: toolInput.scenarioId as string,
         stepOrder: toolInput.stepOrder as number,
         delayMinutes: (toolInput.delayMinutes as number) || 0,
-        messageType: toolInput.messageType as string,
-        messageContent: toolInput.messageContent as string,
+        messageType: msgType,
+        messageContent: msgContent,
       });
       return { id: step.id, stepOrder: step.step_order };
     }
@@ -750,10 +799,17 @@ async function executeTool(
       }));
     }
 
-    // リッチメニュー
+    // リッチメニュー（LINE API経由）
     case 'list_rich_menus': {
-      const result = await db.prepare(`SELECT * FROM rich_menus ORDER BY created_at DESC`).all();
-      return result.results;
+      const lineClient = new LineClient(env.LINE_CHANNEL_ACCESS_TOKEN);
+      const result = await lineClient.getRichMenuList();
+      const menus = (result as { richmenus?: Array<{ richMenuId: string; name: string; chatBarText: string; selected: boolean }> }).richmenus ?? [];
+      return menus.map((m) => ({
+        richMenuId: m.richMenuId,
+        name: m.name,
+        chatBarText: m.chatBarText,
+        selected: m.selected,
+      }));
     }
 
     // カレンダー予約
@@ -763,7 +819,7 @@ async function executeTool(
         id: s.id,
         name: s.name,
         description: s.description,
-        durationMinutes: s.duration_minutes,
+        durationMinutes: s.duration,
         isActive: !!s.is_active,
       }));
     }
@@ -772,7 +828,7 @@ async function executeTool(
       const service = await createCalendarService(db, {
         name: toolInput.name as string,
         description: (toolInput.description as string) || null,
-        duration_minutes: (toolInput.durationMinutes as number) || 60,
+        duration: (toolInput.durationMinutes as number) || 60,
       });
       return { id: service.id, name: service.name };
     }
