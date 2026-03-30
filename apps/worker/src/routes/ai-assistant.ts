@@ -2,18 +2,18 @@ import { Hono } from 'hono';
 import type { Env } from '../index.js';
 import {
   getFriends, getFriendById, getFriendTags, addTagToFriend, removeTagFromFriend,
-  getTags, createTag,
-  getScenarios, getScenarioById, createScenario, createScenarioStep, enrollFriendInScenario,
-  getBroadcasts, createBroadcast,
-  getTemplates, createTemplate,
-  getForms, createForm, getFormSubmissions,
-  getAutomations, createAutomation,
-  getScoringRules, createScoringRule,
-  getOutgoingWebhooks, createOutgoingWebhook,
-  getTrackedLinks, createTrackedLink,
+  getTags, createTag, deleteTag,
+  getScenarios, getScenarioById, createScenario, updateScenario, deleteScenario, createScenarioStep, enrollFriendInScenario,
+  getBroadcasts, createBroadcast, updateBroadcast,
+  getTemplates, createTemplate, updateTemplate, deleteTemplate,
+  getForms, createForm, updateForm, deleteForm, getFormSubmissions,
+  getAutomations, createAutomation, updateAutomation,
+  getScoringRules, createScoringRule, updateScoringRule,
+  getOutgoingWebhooks, createOutgoingWebhook, updateOutgoingWebhook,
+  getTrackedLinks, createTrackedLink, updateTrackedLink,
   getQrCodes, createQrCode,
-  getReminders, createReminder,
-  getCalendarServices, createCalendarService, getCalendarBookings, updateCalendarBookingStatus,
+  getReminders, createReminder, updateReminder,
+  getCalendarServices, createCalendarService, updateCalendarService, getCalendarBookings, updateCalendarBookingStatus,
   getAnalyticsSummary,
   getFriendCount,
 } from '@line-crm/db';
@@ -64,15 +64,19 @@ interface ChatRequest {
 // ── Destructive tools that require confirmation ──
 
 const DESTRUCTIVE_TOOLS = new Set([
-  'send_message', 'create_broadcast',
-  'create_tag', 'add_tag_to_friend', 'remove_tag_from_friend',
-  'create_scenario', 'add_scenario_step', 'enroll_friend_in_scenario',
-  'create_template', 'create_form',
-  'create_automation', 'create_scoring_rule',
-  'create_outgoing_webhook', 'create_tracked_link', 'create_qr_code',
-  'create_reminder', 'create_calendar_service', 'cancel_booking',
+  'send_message', 'create_broadcast', 'update_broadcast',
+  'create_tag', 'delete_tag', 'add_tag_to_friend', 'remove_tag_from_friend',
+  'create_scenario', 'update_scenario', 'delete_scenario', 'add_scenario_step', 'enroll_friend_in_scenario',
+  'create_template', 'update_template', 'delete_template',
+  'create_form', 'update_form', 'delete_form',
+  'create_automation', 'update_automation',
+  'create_scoring_rule', 'update_scoring_rule',
+  'create_outgoing_webhook', 'update_webhook',
+  'create_tracked_link', 'update_tracked_link',
+  'create_qr_code',
+  'create_reminder', 'update_reminder',
+  'create_calendar_service', 'update_calendar_service', 'cancel_booking',
   'update_friend_metadata',
-  'create_form',
   'create_rich_menu', 'link_rich_menu_to_user', 'set_default_rich_menu',
 ]);
 
@@ -542,6 +546,203 @@ function getToolDefinitions() {
       name: 'get_friend_count',
       description: '友だちの総数を取得します。',
       input_schema: { type: 'object' as const, properties: {}, required: [] },
+    },
+    // 【更新・削除ツール】
+    {
+      name: 'update_form',
+      description: 'フォームの設定を更新します。フィールド変更、タグ付与設定、返信メッセージ設定、kintone設定等。',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          formId: { type: 'string', description: 'フォームID' },
+          name: { type: 'string', description: 'フォーム名' },
+          description: { type: 'string', description: '説明' },
+          fields: { type: 'array', description: 'フィールド定義の配列（全置換）', items: { type: 'object' } },
+          onSubmitTagId: { type: 'string', description: '送信時に付与するタグID（nullで解除）' },
+          onSubmitScenarioId: { type: 'string', description: '送信時に開始するシナリオID（nullで解除）' },
+          submitReplyEnabled: { type: 'boolean', description: '送信後LINE返信の有効/無効' },
+          submitReplyType: { type: 'string', description: '返信メッセージ種別', enum: ['text', 'flex'] },
+          submitReplyContent: { type: 'string', description: '返信メッセージ内容' },
+          isActive: { type: 'boolean', description: 'フォームの有効/無効' },
+        },
+        required: ['formId'],
+      },
+    },
+    {
+      name: 'update_scenario',
+      description: 'シナリオの設定を更新します（名前、トリガー、有効/無効）。',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          scenarioId: { type: 'string', description: 'シナリオID' },
+          name: { type: 'string', description: 'シナリオ名' },
+          description: { type: 'string', description: '説明' },
+          triggerType: { type: 'string', description: 'トリガー種別', enum: ['friend_add', 'tag_added', 'manual'] },
+          triggerTagId: { type: 'string', description: 'トリガータグID' },
+          isActive: { type: 'boolean', description: '有効/無効' },
+        },
+        required: ['scenarioId'],
+      },
+    },
+    {
+      name: 'update_broadcast',
+      description: '配信を更新します（draft/scheduledステータスのもの）。',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          broadcastId: { type: 'string', description: '配信ID' },
+          title: { type: 'string', description: 'タイトル' },
+          messageType: { type: 'string', description: 'メッセージ種別', enum: ['text', 'image', 'flex', 'carousel', 'video'] },
+          messageContent: { type: 'string', description: 'メッセージ内容' },
+          targetType: { type: 'string', description: '配信対象', enum: ['all', 'tag'] },
+          targetTagId: { type: 'string', description: '対象タグID' },
+          scheduledAt: { type: 'string', description: '予約配信日時（ISO 8601）' },
+        },
+        required: ['broadcastId'],
+      },
+    },
+    {
+      name: 'update_template',
+      description: 'テンプレートを更新します。',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          templateId: { type: 'string', description: 'テンプレートID' },
+          name: { type: 'string', description: 'テンプレート名' },
+          category: { type: 'string', description: 'カテゴリ' },
+          messageType: { type: 'string', description: 'メッセージ種別' },
+          messageContent: { type: 'string', description: 'メッセージ内容' },
+        },
+        required: ['templateId'],
+      },
+    },
+    {
+      name: 'update_automation',
+      description: 'オートメーションルールを更新します。',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          automationId: { type: 'string', description: 'オートメーションID' },
+          name: { type: 'string', description: 'ルール名' },
+          description: { type: 'string', description: '説明' },
+          eventType: { type: 'string', description: 'イベント種別' },
+          conditions: { type: 'object', description: '条件' },
+          actions: { type: 'array', description: 'アクション配列', items: { type: 'object' } },
+          isActive: { type: 'boolean', description: '有効/無効' },
+          priority: { type: 'number', description: '優先度' },
+        },
+        required: ['automationId'],
+      },
+    },
+    {
+      name: 'update_scoring_rule',
+      description: 'スコアリングルールを更新します。',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          ruleId: { type: 'string', description: 'ルールID' },
+          name: { type: 'string', description: 'ルール名' },
+          eventType: { type: 'string', description: 'イベント種別' },
+          scoreValue: { type: 'number', description: 'スコア値' },
+          isActive: { type: 'boolean', description: '有効/無効' },
+        },
+        required: ['ruleId'],
+      },
+    },
+    {
+      name: 'update_webhook',
+      description: '送信Webhookを更新します。',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          webhookId: { type: 'string', description: 'WebhookID' },
+          name: { type: 'string', description: 'Webhook名' },
+          url: { type: 'string', description: '送信先URL' },
+          eventTypes: { type: 'array', description: 'イベント種別配列', items: { type: 'string' } },
+          isActive: { type: 'boolean', description: '有効/無効' },
+        },
+        required: ['webhookId'],
+      },
+    },
+    {
+      name: 'update_calendar_service',
+      description: 'カレンダー予約サービスを更新します。',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          serviceId: { type: 'string', description: 'サービスID' },
+          name: { type: 'string', description: 'サービス名' },
+          description: { type: 'string', description: '説明' },
+          durationMinutes: { type: 'number', description: '所要時間（分）' },
+          isActive: { type: 'boolean', description: '有効/無効' },
+        },
+        required: ['serviceId'],
+      },
+    },
+    {
+      name: 'update_reminder',
+      description: 'リマインダーを更新します。',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          reminderId: { type: 'string', description: 'リマインダーID' },
+          name: { type: 'string', description: 'リマインダー名' },
+          description: { type: 'string', description: '説明' },
+          isActive: { type: 'boolean', description: '有効/無効' },
+        },
+        required: ['reminderId'],
+      },
+    },
+    {
+      name: 'update_tracked_link',
+      description: 'トラッキングリンクを更新します。',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          linkId: { type: 'string', description: 'リンクID' },
+          name: { type: 'string', description: 'リンク名' },
+          originalUrl: { type: 'string', description: '元URL' },
+          tagId: { type: 'string', description: 'クリック時付与タグID（nullで解除）' },
+          scenarioId: { type: 'string', description: 'クリック時開始シナリオID（nullで解除）' },
+        },
+        required: ['linkId'],
+      },
+    },
+    {
+      name: 'delete_tag',
+      description: 'タグを削除します。',
+      input_schema: {
+        type: 'object' as const,
+        properties: { tagId: { type: 'string', description: 'タグID' } },
+        required: ['tagId'],
+      },
+    },
+    {
+      name: 'delete_form',
+      description: 'フォームを削除します。',
+      input_schema: {
+        type: 'object' as const,
+        properties: { formId: { type: 'string', description: 'フォームID' } },
+        required: ['formId'],
+      },
+    },
+    {
+      name: 'delete_scenario',
+      description: 'シナリオを削除します。',
+      input_schema: {
+        type: 'object' as const,
+        properties: { scenarioId: { type: 'string', description: 'シナリオID' } },
+        required: ['scenarioId'],
+      },
+    },
+    {
+      name: 'delete_template',
+      description: 'テンプレートを削除します。',
+      input_schema: {
+        type: 'object' as const,
+        properties: { templateId: { type: 'string', description: 'テンプレートID' } },
+        required: ['templateId'],
+      },
     },
   ];
 }
@@ -1048,6 +1249,151 @@ async function executeTool(
       return { count };
     }
 
+    // ── 更新ツール ──
+
+    case 'update_form': {
+      const updates: Record<string, unknown> = {};
+      if (toolInput.name !== undefined) updates.name = toolInput.name;
+      if (toolInput.description !== undefined) updates.description = toolInput.description;
+      if (toolInput.fields !== undefined) updates.fields = JSON.stringify(toolInput.fields);
+      if (toolInput.onSubmitTagId !== undefined) updates.on_submit_tag_id = toolInput.onSubmitTagId || null;
+      if (toolInput.onSubmitScenarioId !== undefined) updates.on_submit_scenario_id = toolInput.onSubmitScenarioId || null;
+      if (toolInput.isActive !== undefined) updates.is_active = toolInput.isActive ? 1 : 0;
+      // Handle submit_reply fields via direct SQL (updateForm doesn't cover these)
+      const formId = toolInput.formId as string;
+      if (Object.keys(updates).length > 0) {
+        const sets = Object.keys(updates).map(k => `${k} = ?`).join(', ');
+        const vals = [...Object.values(updates), formId];
+        await db.prepare(`UPDATE forms SET ${sets}, updated_at = datetime('now', '+9 hours') WHERE id = ?`).bind(...vals).run();
+      }
+      if (toolInput.submitReplyEnabled !== undefined || toolInput.submitReplyType !== undefined || toolInput.submitReplyContent !== undefined) {
+        const replyEnabled = toolInput.submitReplyEnabled !== undefined ? (toolInput.submitReplyEnabled ? 1 : 0) : undefined;
+        const replyType = toolInput.submitReplyType as string | undefined;
+        const replyContent = toolInput.submitReplyContent as string | undefined;
+        if (replyEnabled !== undefined) await db.prepare(`UPDATE forms SET submit_reply_enabled = ? WHERE id = ?`).bind(replyEnabled, formId).run();
+        if (replyType !== undefined) await db.prepare(`UPDATE forms SET submit_reply_type = ? WHERE id = ?`).bind(replyType, formId).run();
+        if (replyContent !== undefined) await db.prepare(`UPDATE forms SET submit_reply_content = ? WHERE id = ?`).bind(replyContent, formId).run();
+      }
+      return { success: true, formId };
+    }
+
+    case 'update_scenario': {
+      const updates: Record<string, unknown> = {};
+      if (toolInput.name !== undefined) updates.name = toolInput.name;
+      if (toolInput.description !== undefined) updates.description = toolInput.description;
+      if (toolInput.triggerType !== undefined) updates.trigger_type = toolInput.triggerType;
+      if (toolInput.triggerTagId !== undefined) updates.trigger_tag_id = toolInput.triggerTagId;
+      if (toolInput.isActive !== undefined) updates.is_active = toolInput.isActive ? 1 : 0;
+      await updateScenario(db, toolInput.scenarioId as string, updates);
+      return { success: true, scenarioId: toolInput.scenarioId };
+    }
+
+    case 'update_broadcast': {
+      const updates: Record<string, unknown> = {};
+      if (toolInput.title !== undefined) updates.title = toolInput.title;
+      if (toolInput.messageType !== undefined) updates.message_type = toolInput.messageType;
+      if (toolInput.messageContent !== undefined) updates.message_content = toolInput.messageContent;
+      if (toolInput.targetType !== undefined) updates.target_type = toolInput.targetType;
+      if (toolInput.targetTagId !== undefined) updates.target_tag_id = toolInput.targetTagId;
+      if (toolInput.scheduledAt !== undefined) updates.scheduled_at = toolInput.scheduledAt;
+      await updateBroadcast(db, toolInput.broadcastId as string, updates);
+      return { success: true, broadcastId: toolInput.broadcastId };
+    }
+
+    case 'update_template': {
+      const updates: Partial<{ name: string; category: string; messageType: string; messageContent: string }> = {};
+      if (toolInput.name !== undefined) updates.name = toolInput.name as string;
+      if (toolInput.category !== undefined) updates.category = toolInput.category as string;
+      if (toolInput.messageType !== undefined) updates.messageType = toolInput.messageType as string;
+      if (toolInput.messageContent !== undefined) updates.messageContent = toolInput.messageContent as string;
+      await updateTemplate(db, toolInput.templateId as string, updates);
+      return { success: true, templateId: toolInput.templateId };
+    }
+
+    case 'update_automation': {
+      const updates: Partial<{ name: string; description: string; eventType: string; conditions: Record<string, unknown>; actions: unknown[]; isActive: boolean; priority: number }> = {};
+      if (toolInput.name !== undefined) updates.name = toolInput.name as string;
+      if (toolInput.description !== undefined) updates.description = toolInput.description as string;
+      if (toolInput.eventType !== undefined) updates.eventType = toolInput.eventType as string;
+      if (toolInput.conditions !== undefined) updates.conditions = toolInput.conditions as Record<string, unknown>;
+      if (toolInput.actions !== undefined) updates.actions = toolInput.actions as unknown[];
+      if (toolInput.isActive !== undefined) updates.isActive = toolInput.isActive as boolean;
+      if (toolInput.priority !== undefined) updates.priority = toolInput.priority as number;
+      await updateAutomation(db, toolInput.automationId as string, updates);
+      return { success: true, automationId: toolInput.automationId };
+    }
+
+    case 'update_scoring_rule': {
+      const updates: Partial<{ name: string; eventType: string; scoreValue: number; isActive: boolean }> = {};
+      if (toolInput.name !== undefined) updates.name = toolInput.name as string;
+      if (toolInput.eventType !== undefined) updates.eventType = toolInput.eventType as string;
+      if (toolInput.scoreValue !== undefined) updates.scoreValue = toolInput.scoreValue as number;
+      if (toolInput.isActive !== undefined) updates.isActive = toolInput.isActive as boolean;
+      await updateScoringRule(db, toolInput.ruleId as string, updates);
+      return { success: true, ruleId: toolInput.ruleId };
+    }
+
+    case 'update_webhook': {
+      const updates: Partial<{ name: string; url: string; eventTypes: string[]; isActive: boolean }> = {};
+      if (toolInput.name !== undefined) updates.name = toolInput.name as string;
+      if (toolInput.url !== undefined) updates.url = toolInput.url as string;
+      if (toolInput.eventTypes !== undefined) updates.eventTypes = toolInput.eventTypes as string[];
+      if (toolInput.isActive !== undefined) updates.isActive = toolInput.isActive as boolean;
+      await updateOutgoingWebhook(db, toolInput.webhookId as string, updates);
+      return { success: true, webhookId: toolInput.webhookId };
+    }
+
+    case 'update_calendar_service': {
+      const data: Record<string, unknown> = {};
+      if (toolInput.name !== undefined) data.name = toolInput.name;
+      if (toolInput.description !== undefined) data.description = toolInput.description;
+      if (toolInput.durationMinutes !== undefined) data.duration = toolInput.durationMinutes;
+      if (toolInput.isActive !== undefined) data.is_active = toolInput.isActive ? 1 : 0;
+      await updateCalendarService(db, toolInput.serviceId as string, data);
+      return { success: true, serviceId: toolInput.serviceId };
+    }
+
+    case 'update_reminder': {
+      const updates: Partial<{ name: string; description: string; isActive: boolean }> = {};
+      if (toolInput.name !== undefined) updates.name = toolInput.name as string;
+      if (toolInput.description !== undefined) updates.description = toolInput.description as string;
+      if (toolInput.isActive !== undefined) updates.isActive = toolInput.isActive as boolean;
+      await updateReminder(db, toolInput.reminderId as string, updates);
+      return { success: true, reminderId: toolInput.reminderId };
+    }
+
+    case 'update_tracked_link': {
+      const data: { name?: string; originalUrl?: string; tagId?: string | null; scenarioId?: string | null } = {};
+      if (toolInput.name !== undefined) data.name = toolInput.name as string;
+      if (toolInput.originalUrl !== undefined) data.originalUrl = toolInput.originalUrl as string;
+      if (toolInput.tagId !== undefined) data.tagId = (toolInput.tagId as string) || null;
+      if (toolInput.scenarioId !== undefined) data.scenarioId = (toolInput.scenarioId as string) || null;
+      await updateTrackedLink(db, toolInput.linkId as string, data);
+      return { success: true, linkId: toolInput.linkId };
+    }
+
+    // ── 削除ツール ──
+
+    case 'delete_tag': {
+      await deleteTag(db, toolInput.tagId as string);
+      return { success: true };
+    }
+
+    case 'delete_form': {
+      await deleteForm(db, toolInput.formId as string);
+      return { success: true };
+    }
+
+    case 'delete_scenario': {
+      await deleteScenario(db, toolInput.scenarioId as string);
+      return { success: true };
+    }
+
+    case 'delete_template': {
+      await deleteTemplate(db, toolInput.templateId as string);
+      return { success: true };
+    }
+
     default:
       return { error: `未対応のツール: ${toolName}` };
   }
@@ -1363,6 +1709,20 @@ function describeToolAction(toolName: string, input: Record<string, unknown>): s
     create_calendar_service: (i) => `予約サービス「${i.name}」を作成`,
     cancel_booking: (i) => `予約(${i.bookingId})をキャンセル`,
     update_friend_metadata: (i) => `友だち(${i.friendId})のメタデータを更新`,
+    update_form: (i) => `フォーム(${i.formId})の設定を更新`,
+    update_scenario: (i) => `シナリオ(${i.scenarioId})を更新`,
+    update_broadcast: (i) => `配信(${i.broadcastId})を更新`,
+    update_template: (i) => `テンプレート(${i.templateId})を更新`,
+    update_automation: (i) => `オートメーション(${i.automationId})を更新`,
+    update_scoring_rule: (i) => `スコアリングルール(${i.ruleId})を更新`,
+    update_webhook: (i) => `Webhook(${i.webhookId})を更新`,
+    update_calendar_service: (i) => `予約サービス(${i.serviceId})を更新`,
+    update_reminder: (i) => `リマインダー(${i.reminderId})を更新`,
+    update_tracked_link: (i) => `トラッキングリンク(${i.linkId})を更新`,
+    delete_tag: (i) => `タグ(${i.tagId})を削除`,
+    delete_form: (i) => `フォーム(${i.formId})を削除`,
+    delete_scenario: (i) => `シナリオ(${i.scenarioId})を削除`,
+    delete_template: (i) => `テンプレート(${i.templateId})を削除`,
   };
   const fn = descriptions[toolName];
   return fn ? fn(input) : `${toolName}を実行`;
