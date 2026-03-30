@@ -36,6 +36,7 @@ import { forms } from './routes/forms.js';
 import { assets } from './routes/assets.js';
 import { richMenuMappings } from './routes/rich-menu-mappings.js';
 import { adPlatforms } from './routes/ad-platforms.js';
+import { aiAssistant } from './routes/ai-assistant.js';
 import { generateBookingHtml, generateFormHtml, generateBookingCancelHtml } from './liff-pages.js';
 import { processBookingReminders } from './services/booking-reminder.js';
 
@@ -54,6 +55,7 @@ export type Env = {
     WORKER_URL: string;
     ALLOWED_ORIGINS?: string;
     X_HARNESS_URL?: string;  // Optional: X Harness API URL for account linking
+    ANTHROPIC_API_KEY?: string;  // Anthropic API key for AI assistant
   };
 };
 
@@ -106,6 +108,7 @@ app.route('/', forms);
 app.route('/', assets);
 app.route('/', richMenuMappings);
 app.route('/', adPlatforms);
+app.route('/', aiAssistant);
 
 // Short link: /r/:ref → record scan + redirect to LINE friend-add URL
 app.get('/r/:ref', async (c) => {

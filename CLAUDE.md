@@ -49,7 +49,7 @@ line-harness-oss/
 │   │   ├── src/
 │   │   │   ├── index.ts     # メインエントリ、CORS・Auth、/liff・/liff/booking・/r/:ref
 │   │   │   ├── liff-pages.ts # LIFF予約・フォーム専用HTML生成（インラインJS）
-│   │   │   ├── routes/      # API各ルート（26ファイル）
+│   │   │   ├── routes/      # API各ルート（27ファイル、ai-assistant.ts含む）
 │   │   │   ├── middleware/  # 認証ミドルウェア (auth.ts)
 │   │   │   └── services/    # ビジネスロジック
 │   │   │       ├── broadcast.ts       # 一斉配信（テンプレート変数展開対応）
@@ -220,6 +220,7 @@ pnpm run deploy
 | `LIFF_URL` | Secret | LIFFアプリURL（`https://liff.line.me/2009615537-8qwrEnEt`） |
 | `WORKER_URL` | Var | Workerの公開URL（`https://line-harness-mamayoro.s-kamiya.workers.dev`） |
 | `X_HARNESS_URL` | Secret | X Harness API URL（省略可） |
+| `ANTHROPIC_API_KEY` | Secret | Anthropic APIキー（AIアシスタント機能用） |
 | `DB` | Binding | D1 データベース |
 | `ASSETS` | Binding | R2 メディアストレージ（画像・動画） |
 | `ASSETS_KV` | Binding | KV（LIFF配信 + レガシーアセット、R2フォールバック） |
@@ -429,6 +430,15 @@ WORKER_URL=http://localhost:8787
 - **マルチアカウント**: 複数LINE公式アカウントを1システムで管理
 - **Stripe連携**: 決済イベント受信・フレンド照合
 - **短縮リンク**: `/r/:ref` → LIFFへのリダイレクト（LINE友だち追加URL）
+- **AIチャットアシスタント**: Claude API連携でCRM全機能を自然言語操作
+  - `POST /api/ai-assistant/chat`: チャット形式のAI対話API
+  - Claude Sonnet 4（claude-sonnet-4-20250514）によるツール呼び出し
+  - 43種のCRM操作ツール（友だち管理・タグ・配信・シナリオ・フォーム・予約・分析等）
+  - 破壊的操作（配信・タグ変更・作成系）は確認フロー付き（confirmed=true必須）
+  - 閲覧系操作は即実行
+  - サイドバー最上部にグラデーションアクセント付きリンク
+  - LINEライクなチャットUI（マークダウン対応・サジェスト・会話履歴localStorage保存）
+  - 環境変数: `ANTHROPIC_API_KEY`（wrangler secret）
 
 ---
 
@@ -611,6 +621,7 @@ pnpm -r run build
 25. テンプレート変数展開（全配信共通: {{name}}/{{score}}/{{uid}}/{{ref}}/{{friend_id}}、expandVariables統一済み）
 26. 動画メッセージ完全対応（R2配信、Range request、CORS、プレビュー画像R2自己ホスト）
 27. チャット画面の自動スクロール（最新メッセージへ）
+28. AIチャットアシスタント（Claude API連携、自然言語でCRM全機能操作、確認フロー付き）
 28. 予約リマインダー自動配信（複数設定、テンプレート変数、キャンセルボタン、LIFFキャンセルページ、マルチアカウント対応）
 29. トラッキングリンクのlu自動付与（全pushMessageパスで友だち識別パラメータ埋め込み）
 30. カレンダー予約確認メッセージのマルチアカウント対応

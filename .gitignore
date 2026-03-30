@@ -11,3 +11,4 @@ dist/
 .env.staging
 apps/web/out/
 .vercel
+.env*.local
