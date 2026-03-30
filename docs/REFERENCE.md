@@ -95,7 +95,7 @@ WORKER_URL=http://localhost:8787
 
 ---
 
-## データベーステーブル一覧（D1 全43テーブル）
+## データベーステーブル一覧（D1 全46テーブル）
 
 ```
 # 友だち管理
@@ -141,6 +141,9 @@ rich_menus, rich_menu_mappings
 
 # フォーム
 forms, form_submissions
+
+# AIアシスタント
+ai_usage_logs
 ```
 
 ---
@@ -209,8 +212,12 @@ forms, form_submissions
 
 ### AIチャットアシスタント
 - `POST /api/ai-assistant/chat`: Claude Sonnet 4によるツール呼び出し
-- 43種CRM操作ツール、破壊的操作は確認フロー付き
+- 59種CRM操作ツール（list/create/update/delete全対応）、破壊的操作は確認フロー付き
+- トークン使用量記録（`ai_usage_logs`テーブル、Sonnet 4料金: input $3/1M + output $15/1M）
+- `GET /api/ai-assistant/usage?period=month|daily` — 月別・日別集計
+- `GET /api/ai-assistant/usage/logs` — ログ一覧
 - サイドバー最上部にグラデーションアクセント、チャットUI(マークダウン・サジェスト・履歴保存)
+- 「利用状況」タブ: 今月サマリー(USD/JPY)・日別棒グラフ・月別推移・ログ一覧
 
 ### その他
 - QRコード別流入計測、流入分析ダッシュボード、アフィリエイト追跡
@@ -272,4 +279,4 @@ pnpm run deploy
 
 ---
 
-**最終更新**: 2026年3月30日
+**最終更新**: 2026年3月31日

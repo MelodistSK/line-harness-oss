@@ -18,7 +18,7 @@ LINE公式アカウント向けOSS CRM。ままよろ自社運用向けカスタ
 apps/worker/src/          # Hono API（routes/ 27ファイル、services/、middleware/）
 apps/web/src/             # Next.js（app/ 30ページ、components/、lib/api.ts）
 apps/liff/src/            # LIFF（main.ts、form.ts、booking.ts）
-packages/db/              # D1スキーマ(schema-full.sql)・マイグレーション(001-018)・DB操作関数
+packages/db/              # D1スキーマ(schema-full.sql)・マイグレーション(001-019)・DB操作関数
 packages/line-sdk/        # LINE API クライアント・Webhook署名検証
 packages/shared/          # 共有型定義
 ```
@@ -31,7 +31,7 @@ cd apps/web && pnpm dev                     # フロント開発 → :3000
 cd apps/worker && pnpm dev                  # API開発 → :8787
 cd apps/worker && npx wrangler deploy       # Workerデプロイ
 npx vercel deploy --prod                    # Vercelデプロイ
-wrangler d1 execute line-crm --file packages/db/migrations/018_booking_reminders.sql --remote
+wrangler d1 execute line-crm --file packages/db/migrations/019_ai_usage.sql --remote
 ```
 
 ---
@@ -60,8 +60,10 @@ wrangler d1 execute line-crm --file packages/db/migrations/018_booking_reminders
 
 ### AIアシスタント (`routes/ai-assistant.ts`)
 - `POST /api/ai-assistant/chat` → Claude Sonnet 4 がツール呼び出しでCRM操作
-- 43種ツール定義、DB直接アクセス（内部fetch不要）
+- 59種ツール定義（CRUD全対応）、DB直接アクセス（内部fetch不要）
 - 破壊的操作は `confirmed=true` 必須、閲覧系は即実行
+- トークン使用量記録（`ai_usage_logs`テーブル）+ 利用状況ダッシュボード
+- `GET /api/ai-assistant/usage`, `GET /api/ai-assistant/usage/logs`
 
 ---
 
@@ -105,7 +107,7 @@ wrangler d1 execute line-crm --file packages/db/migrations/018_booking_reminders
 | 分析 | QRコード流入計測、流入分析ダッシュボード、アフィリエイト追跡、URLトラッキング |
 | 自動化 | オートメーション(IF-THEN)、スコアリング、イベントバス、Webhook IN/OUT |
 | UI | ダークネイビーサイドバー、Flexプレビュー、リッチメニュービルダー |
-| AI | Claude APIチャットアシスタント（43種ツール、確認フロー付き） |
+| AI | Claude APIチャットアシスタント（59種ツール、CRUD全対応、利用状況トラッキング） |
 | その他 | マルチアカウント、Stripe連携、広告連携、BAN検知、メディアR2ストレージ |
 
 ---
@@ -119,4 +121,4 @@ wrangler d1 execute line-crm --file packages/db/migrations/018_booking_reminders
 
 ---
 
-**最終更新**: 2026年3月30日
+**最終更新**: 2026年3月31日

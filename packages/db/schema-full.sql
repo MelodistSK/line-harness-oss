@@ -510,6 +510,21 @@ CREATE TABLE IF NOT EXISTS booking_reminder_logs (
 CREATE INDEX IF NOT EXISTS idx_booking_reminder_logs_booking ON booking_reminder_logs (booking_id);
 
 -- ============================================================
+-- AI Assistant Usage Logs
+-- ============================================================
+CREATE TABLE IF NOT EXISTS ai_usage_logs (
+  id                TEXT PRIMARY KEY,
+  input_tokens      INTEGER NOT NULL,
+  output_tokens     INTEGER NOT NULL,
+  total_tokens      INTEGER NOT NULL,
+  estimated_cost_usd REAL NOT NULL,
+  model             TEXT NOT NULL,
+  tool_calls        INTEGER DEFAULT 0,
+  user_message      TEXT,
+  created_at        TEXT DEFAULT (datetime('now', '+9 hours'))
+);
+
+-- ============================================================
 -- Reminders (Countdown/Reminder)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS reminders (
@@ -754,4 +769,5 @@ CREATE INDEX IF NOT EXISTS idx_automation_logs_automation ON automation_logs (au
 --   - Auto-replies: auto_replies (with line_account_id support)
 --   - Calendar Services: calendar_services
 --   - Analytics: qr_codes
--- Total: 8 + 1 + 6 + 30 = 45 tables
+--   - AI: ai_usage_logs
+-- Total: 8 + 1 + 6 + 30 + 1 = 46 tables
