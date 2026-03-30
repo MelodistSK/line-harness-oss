@@ -187,6 +187,7 @@ function FormBuilder({ form, tags, scenarios, onSaved, setError, setSuccess }: {
   const [fields, setFields] = useState<FormField[]>(form?.fields || [])
   const [tagId, setTagId] = useState(form?.onSubmitTagId || '')
   const [scenarioId, setScenarioId] = useState(form?.onSubmitScenarioId || '')
+  const [formActive, setFormActive] = useState(form?.isActive ?? true)
   const [replyEnabled, setReplyEnabled] = useState(form?.submitReplyEnabled ?? true)
   const [replyType, setReplyType] = useState(form?.submitReplyType || 'flex')
   const [replyContent, setReplyContent] = useState(form?.submitReplyContent || '')
@@ -267,6 +268,7 @@ function FormBuilder({ form, tags, scenarios, onSaved, setError, setSuccess }: {
     try {
       const payload = {
         name, description: description || null, fields,
+        isActive: formActive,
         onSubmitTagId: tagId || null, onSubmitScenarioId: scenarioId || null,
         submitReplyEnabled: replyEnabled,
         submitReplyType: replyType,
@@ -403,6 +405,19 @@ function FormBuilder({ form, tags, scenarios, onSaved, setError, setSuccess }: {
 
         {builderTab === 'settings' && (
           <div className="card p-5 space-y-4">
+            {/* フォーム有効/無効 */}
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-800">フォームの状態</h3>
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" checked={formActive} onChange={(e) => setFormActive(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+                <span className={formActive ? 'text-green-600 font-medium' : 'text-gray-400'}>
+                  {formActive ? '有効' : '無効'}
+                </span>
+              </label>
+            </div>
+
+            <div className="border-t border-gray-200 pt-4">
             <h3 className="text-sm font-semibold text-gray-800">送信時の設定</h3>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">送信時タグ付与</label>
@@ -486,6 +501,7 @@ function FormBuilder({ form, tags, scenarios, onSaved, setError, setSuccess }: {
                   )}
                 </div>
               )}
+            </div>
             </div>
           </div>
         )}
