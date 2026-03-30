@@ -1053,9 +1053,17 @@ aiAssistant.post('/api/ai-assistant/chat', async (c) => {
     content: m.content,
   }));
 
+  // Track cumulative usage across tool loop
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+  let totalToolCalls = 0;
+  const userMessage = messages.filter((m) => m.role === 'user').pop()?.content || '';
+
   try {
     // Call Claude API with tools
     let response = await callClaudeAPI(anthropicApiKey, claudeMessages, getToolDefinitions());
+    totalInputTokens += response.usage?.input_tokens || 0;
+    totalOutputTokens += response.usage?.output_tokens || 0;
 
     // Process tool calls in a loop
     let iterations = 0;
@@ -1069,16 +1077,20 @@ aiAssistant.post('/api/ai-assistant/chat', async (c) => {
       ) as Array<{ type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }>;
 
       if (toolUseBlocks.length === 0) break;
+      totalToolCalls += toolUseBlocks.length;
 
       // Check if any tool is destructive and needs confirmation
       const destructiveTools = toolUseBlocks.filter((t) => DESTRUCTIVE_TOOLS.has(t.name));
 
       if (destructiveTools.length > 0 && !confirmed) {
-        // Get the text blocks from Claude's response
         const textBlocks = response.content.filter(
           (block: { type: string }) => block.type === 'text',
         ) as Array<{ type: 'text'; text: string }>;
         const responseText = textBlocks.map((b) => b.text).join('\n');
+
+        // Log usage even for confirmation pauses
+        const ctx = c.executionCtx as ExecutionContext;
+        ctx.waitUntil(logUsage(c.env.DB, totalInputTokens, totalOutputTokens, totalToolCalls, userMessage));
 
         return c.json({
           success: true,
@@ -1126,7 +1138,13 @@ aiAssistant.post('/api/ai-assistant/chat', async (c) => {
       ];
 
       response = await callClaudeAPI(anthropicApiKey, updatedMessages, getToolDefinitions());
+      totalInputTokens += response.usage?.input_tokens || 0;
+      totalOutputTokens += response.usage?.output_tokens || 0;
     }
+
+    // Log usage asynchronously
+    const ctx = c.executionCtx as ExecutionContext;
+    ctx.waitUntil(logUsage(c.env.DB, totalInputTokens, totalOutputTokens, totalToolCalls, userMessage));
 
     // Extract final text response
     const textBlocks = response.content.filter(
@@ -1144,6 +1162,11 @@ aiAssistant.post('/api/ai-assistant/chat', async (c) => {
     });
   } catch (err) {
     console.error('AI Assistant error:', err);
+    // Log partial usage even on error
+    if (totalInputTokens > 0 || totalOutputTokens > 0) {
+      const ctx = c.executionCtx as ExecutionContext;
+      ctx.waitUntil(logUsage(c.env.DB, totalInputTokens, totalOutputTokens, totalToolCalls, userMessage));
+    }
     return c.json({
       success: false,
       error: err instanceof Error ? err.message : 'AI処理中にエラーが発生しました',
@@ -1153,11 +1176,17 @@ aiAssistant.post('/api/ai-assistant/chat', async (c) => {
 
 // ── Claude API caller ──
 
+interface ClaudeResponse {
+  content: Array<{ type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }>;
+  stop_reason: string;
+  usage?: { input_tokens: number; output_tokens: number };
+}
+
 async function callClaudeAPI(
   apiKey: string,
   messages: unknown[],
   tools: unknown[],
-) {
+): Promise<ClaudeResponse> {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -1179,11 +1208,96 @@ async function callClaudeAPI(
     throw new Error(`Claude API error: ${response.status} ${errorText}`);
   }
 
-  return response.json() as Promise<{
-    content: Array<{ type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }>;
-    stop_reason: string;
-  }>;
+  return response.json() as Promise<ClaudeResponse>;
 }
+
+// ── Usage logging ──
+
+const SONNET_INPUT_COST_PER_TOKEN = 3 / 1_000_000;   // $3/1M tokens
+const SONNET_OUTPUT_COST_PER_TOKEN = 15 / 1_000_000;  // $15/1M tokens
+
+async function logUsage(
+  db: D1Database,
+  inputTokens: number,
+  outputTokens: number,
+  toolCallCount: number,
+  userMessage: string,
+) {
+  const totalTokens = inputTokens + outputTokens;
+  const estimatedCost = inputTokens * SONNET_INPUT_COST_PER_TOKEN + outputTokens * SONNET_OUTPUT_COST_PER_TOKEN;
+  const id = crypto.randomUUID();
+  const truncatedMessage = userMessage.substring(0, 100);
+  await db.prepare(
+    `INSERT INTO ai_usage_logs (id, input_tokens, output_tokens, total_tokens, estimated_cost_usd, model, tool_calls, user_message, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+9 hours'))`,
+  ).bind(id, inputTokens, outputTokens, totalTokens, estimatedCost, 'claude-sonnet-4-20250514', toolCallCount, truncatedMessage).run();
+}
+
+// ── Usage API endpoints ──
+
+// GET /api/ai-assistant/usage?period=month|daily&from=&to=
+aiAssistant.get('/api/ai-assistant/usage', async (c) => {
+  const period = c.req.query('period') || 'month';
+  const db = c.env.DB;
+
+  if (period === 'daily') {
+    const from = c.req.query('from') || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const to = c.req.query('to') || new Date().toISOString().slice(0, 10);
+    const result = await db.prepare(
+      `SELECT
+        date(created_at) as date,
+        SUM(input_tokens) as input_tokens,
+        SUM(output_tokens) as output_tokens,
+        SUM(total_tokens) as total_tokens,
+        SUM(estimated_cost_usd) as estimated_cost_usd,
+        COUNT(*) as request_count,
+        SUM(tool_calls) as tool_calls
+       FROM ai_usage_logs
+       WHERE date(created_at) >= ? AND date(created_at) <= ?
+       GROUP BY date(created_at)
+       ORDER BY date(created_at) ASC`,
+    ).bind(from, to).all();
+    return c.json({ success: true, data: result.results });
+  }
+
+  // period=month (default): monthly aggregation
+  const result = await db.prepare(
+    `SELECT
+      strftime('%Y-%m', created_at) as month,
+      SUM(input_tokens) as input_tokens,
+      SUM(output_tokens) as output_tokens,
+      SUM(total_tokens) as total_tokens,
+      SUM(estimated_cost_usd) as estimated_cost_usd,
+      COUNT(*) as request_count,
+      SUM(tool_calls) as tool_calls
+     FROM ai_usage_logs
+     GROUP BY strftime('%Y-%m', created_at)
+     ORDER BY month DESC
+     LIMIT 12`,
+  ).all();
+  return c.json({ success: true, data: result.results });
+});
+
+// GET /api/ai-assistant/usage/logs?limit=&offset=
+aiAssistant.get('/api/ai-assistant/usage/logs', async (c) => {
+  const limit = parseInt(c.req.query('limit') || '50');
+  const offset = parseInt(c.req.query('offset') || '0');
+  const db = c.env.DB;
+
+  const result = await db.prepare(
+    `SELECT * FROM ai_usage_logs ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+  ).bind(limit, offset).all();
+
+  const countResult = await db.prepare(`SELECT COUNT(*) as total FROM ai_usage_logs`).first<{ total: number }>();
+
+  return c.json({
+    success: true,
+    data: {
+      logs: result.results,
+      total: countResult?.total || 0,
+    },
+  });
+});
 
 // ── Describe tool action for confirmation ──
 
